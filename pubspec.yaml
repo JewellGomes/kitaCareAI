@@ -39,6 +39,7 @@ dependencies:
   image_picker: ^1.2.1
   http: ^1.6.0
   xml: ^6.6.1
+  url_launcher: ^6.3.1  # To open Waze/Google Maps
 
 dev_dependencies:
   flutter_test:
