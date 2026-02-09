@@ -10,15 +10,25 @@ import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 List<CameraDescription> cameras = [];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Start all tasks at once instead of one by one
+  final initializations = await Future.wait([
+    dotenv.load(fileName: ".env"),
+    availableCameras().catchError((e) => <CameraDescription>[]),
+  ]);
+
+  cameras = initializations[1] as List<CameraDescription>;
+
   try {
     await Firebase.initializeApp(
-      options: const FirebaseOptions(
-        apiKey: "AIzaSyBg9eOhAsZqw8pZVuitlE6YNmTgk39uSHQ",
+      options: FirebaseOptions(
+        apiKey: dotenv.env['FIREBASE_KEY']!,
         appId: "1:922447048114:android:7ee1a2bd1c95c9322388ab",
         messagingSenderId: "922447048114",
         projectId: "silentsignalai-87900",
@@ -29,11 +39,6 @@ Future<void> main() async {
     debugPrint("Firebase Error: $e");
   }
 
-  try {
-    cameras = await availableCameras();
-  } catch (e) {
-    debugPrint("Camera error: $e");
-  }
   runApp(const KitaCareApp());
 }
 
@@ -162,14 +167,18 @@ class _KitaCareMapState extends State<KitaCareMap> {
 
   @override
   void initState() {
+    super.initState();
     _mapController = MapTileLayerController();
     _zoomPanBehavior = MapZoomPanBehavior(
       focalLatLng: const MapLatLng(4.2105, 101.9758),
       zoomLevel: 6,
       enableDoubleTapZooming: true,
     );
-    _fetchRealTimeMapPoints();
-    super.initState();
+
+    // Wait 500ms so the UI can finish drawing before hitting the network
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _fetchRealTimeMapPoints();
+    });
   }
 
   Future<String> _fetchUNICEF() async {
@@ -198,7 +207,7 @@ class _KitaCareMapState extends State<KitaCareMap> {
   Future<void> _fetchRealTimeMapPoints() async {
     setState(() => _isLoadingMap = true);
     try {
-      final model = GenerativeModel(model: 'gemini-3-flash-preview', apiKey: 'AIzaSyCmKMOSQEwd9Cfdlv7Bq34WcOmpRtz236Y');
+      final model = GenerativeModel(model: 'gemini-3-flash-preview', apiKey: dotenv.env['GEMINI_KEY']!);
 
       // Fetch news for context
       final resNews = await http.get(Uri.parse('https://www.bharian.com.my/berita/nasional.xml'));
@@ -485,7 +494,7 @@ class _DonationFormScreenState extends State<DonationFormScreen> {
   Future<void> _getAI() async {
     setState(() { _isAnalyzing = true; _aiRecommendation = "Analyzing data..."; });
     try {
-      final model = GenerativeModel(model: 'gemini-3-flash-preview', apiKey: 'AIzaSyCmKMOSQEwd9Cfdlv7Bq34WcOmpRtz236Y');
+      final model = GenerativeModel(model: 'gemini-3-flash-preview', apiKey: dotenv.env['GEMINI_KEY']!);
       final prompt = "Suggest a real NGO in Malaysia for: $_donationType based on current news. Description: ${_descriptionController.text}";
 
       final content = [Content.text(prompt)];
