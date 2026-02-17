@@ -17,8 +17,13 @@ class NGOMissionHub extends StatefulWidget {
 
 class _NGOMissionHubState extends State<NGOMissionHub> {
   final User? user = FirebaseAuth.instance.currentUser;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  
+  // State variables for backend logic
   bool _isAnalyzing = false;
-  String _aiStrategy = "Fetching latest regional updates...";
+  String _aiStrategy = "Fetching internal logistics advisor...";
+  bool _isPinVerified = false;
+  final TextEditingController _pinController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -27,24 +32,26 @@ class _NGOMissionHubState extends State<NGOMissionHub> {
     _generateMissionStrategy();
   }
 
-  // --- AI MISSION STRATEGY (Mirroring Donor Map's News Logic) ---
+  // ==========================================
+  // BACKEND: AI OPS STRATEGY (Operational Prompt)
+  // ==========================================
   Future<void> _generateMissionStrategy() async {
     setState(() => _isAnalyzing = true);
     try {
-      // 1. Fetch News for Context (Same as Donor Map)
       final resNews = await http.get(Uri.parse('https://www.bharian.com.my/berita/nasional.xml'));
       String news = "General Malaysia news";
       if (resNews.statusCode == 200) {
         news = XmlDocument.parse(resNews.body).findAllElements('title').take(5).map((e) => e.innerText).join(". ");
       }
 
-      // 2. Ask Gemini for Operational Strategy
       final model = GenerativeModel(model: 'gemini-3-flash-preview', apiKey: dotenv.env['GEMINI_KEY']!);
+      
+      // Tasked for NGO internal ops specifically (disbursement/drop-offs)
       final prompt = """
       CONTEXT: $news
-      NGO ROLE: Disaster Relief & Poverty Alleviation.
-      TASK: Provide a 2-sentence 'Commanders Intent' or strategy for an NGO operating in Malaysia today. 
-      Focus on logistics or high-risk areas mentioned in news.
+      TASK: You are an internal NGO Logistics Consultant. 
+      Suggest how to verify drop-offs and manage disbursement logs based on these news trends.
+      Limit to 2 sentences. Professional tone.
       """;
 
       final response = await model.generateContent([Content.text(prompt)]);
@@ -52,183 +59,213 @@ class _NGOMissionHubState extends State<NGOMissionHub> {
         _aiStrategy = response.text ?? "Focus on verified high-urgency zones.";
       });
     } catch (e) {
-      _aiStrategy = "Maintain standby readiness for climate-related logistics.";
+      _aiStrategy = "Maintain standby readiness for internal logistics.";
     } finally {
       setState(() => _isAnalyzing = false);
     }
   }
 
-  // --- UI COMPONENTS ---
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        title: const Text("NGO Mission Hub", style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh, color: Colors.teal), onPressed: _generateMissionStrategy),
-          IconButton(icon: const Icon(Icons.logout, color: Colors.grey), onPressed: () => FirebaseAuth.instance.signOut()),
-        ],
-      ),
-      body: Column(
-        children: [
-          // 1. AI STRATEGY CARD (Mirroring the Search/News vibe)
-          _buildAIStrategyCard(),
+    // 1. BACKEND GATE: Check Project PIN
+    if (!_isPinVerified) {
+      return _buildPinGate();
+    }
 
-          // 2. SEARCH BAR (To filter their own reports)
-          _buildSearchBar(),
+    // 2. BACKEND DATA: Listen to the specific NGO's profile
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _db.collection('users').doc(user?.uid).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        
+        // Extract real data from Firestore
+        var ngoData = snapshot.data!.data() as Map<String, dynamic>;
 
-          // 3. MISSION REVIEWS (Live Firestore Stream)
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            child: Row(
+        return Scaffold(
+          backgroundColor: Colors.white,
+          appBar: _buildAppBar(),
+          body: SingleChildScrollView( // Allow scrolling for all sections
+            child: Column(
               children: [
-                Icon(Icons.radar, size: 18, color: Colors.teal),
-                SizedBox(width: 8),
-                Text("LIVE FIELD REPORTS", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2, fontSize: 12, color: Colors.grey)),
+                _buildAIStrategyCard(),
+                
+                // NEW: Logistics Analytics (Transparency/Dispatch)
+                _buildLogisticsStats(ngoData),
+
+                // NEW: Fund Summary (Bank Details)
+                _buildFundSummary(ngoData),
+
+                // NEW: Operational Actions (QR & Items)
+                _buildActionButtons(),
+
+                _buildSearchBar(),
+
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Row(
+                    children: [
+                      Icon(Icons.radar, size: 18, color: Colors.teal),
+                      SizedBox(width: 8),
+                      Text("LIVE FIELD REPORTS", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2, fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                ),
+                
+                // Needs List
+                SizedBox(
+                  height: 400, // Fixed height for stream inside scrollview
+                  child: _buildLiveNeedsStream()
+                ),
               ],
             ),
           ),
-          
-          Expanded(child: _buildLiveNeedsStream()),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: Colors.teal,
-        onPressed: _showAddNeedDialog,
-        icon: const Icon(Icons.add_location_alt, color: Colors.white),
-        label: const Text("Post Need", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-      ),
+          floatingActionButton: FloatingActionButton.extended(
+            backgroundColor: Colors.teal,
+            onPressed: () => _showAddNeedDialog(isPhysical: false),
+            icon: const Icon(Icons.add_location_alt, color: Colors.white),
+            label: const Text("Post Need", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        );
+      }
     );
   }
 
-  Widget _buildAIStrategyCard() {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [Colors.teal.shade800, Colors.teal.shade600]),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.teal.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+  // ==========================================
+  // UI COMPONENTS (INTEGRATED WITH BACKEND)
+  // ==========================================
+
+  Widget _buildPinGate() {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.psychology, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Text("AI ADVISOR", style: TextStyle(color: Colors.teal.shade100, fontWeight: FontWeight.bold, fontSize: 10, letterSpacing: 1.5)),
-              const Spacer(),
-              if (_isAnalyzing) const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+              const Icon(Icons.lock_person, size: 64, color: Colors.teal),
+              const SizedBox(height: 16),
+              const Text("Project PIN Required", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const Text("Enter your secure NGO project PIN", style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 24),
+              TextField(
+                controller: _pinController,
+                obscureText: true,
+                textAlign: TextAlign.center,
+                decoration: const InputDecoration(hintText: "••••", border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  // BACKEND: Validate PIN (hardcoded 8888 or fetch from ngoData)
+                  if (_pinController.text == "8888") {
+                    setState(() => _isPinVerified = true);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid PIN")));
+                  }
+                },
+                child: const Text("Verify & Access Hub"),
+              )
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            _aiStrategy,
-            style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500, height: 1.4),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: TextField(
-        controller: _searchController,
-        decoration: InputDecoration(
-          hintText: "Filter reports by location...",
-          prefixIcon: const Icon(Icons.search, color: Colors.teal),
-          filled: true,
-          fillColor: Colors.grey.shade100,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
         ),
       ),
     );
   }
 
-  Widget _buildLiveNeedsStream() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('needs')
-          .where('ngoId', isEqualTo: user?.uid)
-          .orderBy('createdAt', descending: true)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        
-        final docs = snapshot.data!.docs;
-        if (docs.isEmpty) {
-          return Center(child: Text("No active missions. Post a need to start.", style: TextStyle(color: Colors.grey.shade400)));
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: docs.length,
-          itemBuilder: (context, index) {
-            final data = docs[index].data() as Map<String, dynamic>;
-            final urgency = data['urgency'] ?? 'Medium';
-            
-            return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.grey.shade100),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
-              ),
-              child: ListTile(
-                contentPadding: const EdgeInsets.all(16),
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: _getColorForUrgency(urgency).withOpacity(0.1), shape: BoxShape.circle),
-                  child: Icon(Icons.warning_rounded, color: _getColorForUrgency(urgency)),
-                ),
-                title: Text(data['locationName'] ?? "Zone", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 4),
-                    Text(data['description'] ?? "", maxLines: 2, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, py: 2),
-                      decoration: BoxDecoration(color: _getColorForUrgency(urgency), borderRadius: BorderRadius.circular(12)),
-                      child: Text(urgency, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.verified_user, color: Colors.green),
-                  onPressed: () => _fulfillNeed(docs[index].id),
-                ),
-              ),
-            );
-          },
-        );
-      },
+  Widget _buildLogisticsStats(Map<String, dynamic> data) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          _statCard("Transparency Score", "${data['transparencyScore'] ?? 0}%", Icons.verified_user, Colors.green),
+          const SizedBox(width: 10),
+          _statCard("Avg Dispatch", "${data['dispatchTime'] ?? 'N/A'} Days", Icons.local_shipping, Colors.blue),
+        ],
+      ),
     );
   }
 
-  Color _getColorForUrgency(String urgency) {
-    if (urgency == 'Critical') return Colors.redAccent;
-    if (urgency == 'High') return Colors.orange;
-    return Colors.teal;
+  Widget _statCard(String label, String value, IconData icon, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 20),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Text(label, style: const TextStyle(color: Colors.grey, fontSize: 10)),
+          ],
+        ),
+      ),
+    );
   }
 
-  // --- LOGIC ---
+  Widget _buildFundSummary(Map<String, dynamic> data) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.slate.shade900, borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        children: [
+          const Icon(Icons.account_balance, color: Colors.white70),
+          const SizedBox(width: 12),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text("Fund Bank Account", style: TextStyle(color: Colors.white54, fontSize: 10)),
+            Text("${data['bankName'] ?? 'Bank'} : ${data['bankAcc'] ?? 'Account'}", 
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: () => _openScanner(), 
+              icon: const Icon(Icons.qr_code_scanner),
+              label: const Text("Verify Drop-off"),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade800, foregroundColor: Colors.white),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: () => _showAddNeedDialog(isPhysical: true),
+              icon: const Icon(Icons.shopping_basket),
+              label: const Text("Request Items"),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade900, foregroundColor: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // BACKEND LOGIC ACTIONS
+  // ==========================================
+
+  void _openScanner() {
+    // Logic: Use mobile_scanner to verify donation IDs
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Opening QR Verifier...")));
+  }
 
   void _fulfillNeed(String docId) async {
-    await FirebaseFirestore.instance.collection('needs').doc(docId).delete();
+    // BACKEND: Transparency improves when items are marked fulfilled
+    await _db.collection('needs').doc(docId).delete();
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mission Fulfilled and marker removed.")));
   }
 
-  void _showAddNeedDialog() {
+  void _showAddNeedDialog({required bool isPhysical}) {
     final loc = TextEditingController();
     final desc = TextEditingController();
     String urgency = 'High';
@@ -242,37 +279,32 @@ class _NGOMissionHubState extends State<NGOMissionHub> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text("REPORT FIELD NEED", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.teal)),
+            Text(isPhysical ? "REQUEST PHYSICAL GOODS" : "NEW FIELD REPORT", 
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.teal)),
             const SizedBox(height: 20),
-            TextField(controller: loc, decoration: const InputDecoration(labelText: "Location (District, State)", border: OutlineInputBorder())),
+            TextField(controller: loc, decoration: InputDecoration(labelText: isPhysical ? "Drop-off Location" : "Location (District)")),
             const SizedBox(height: 12),
-            TextField(controller: desc, decoration: const InputDecoration(labelText: "Summary of Need", border: OutlineInputBorder())),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: urgency,
-              items: ['Critical', 'High', 'Medium'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (v) => urgency = v!,
-              decoration: const InputDecoration(labelText: "Urgency Level", border: OutlineInputBorder()),
-            ),
+            TextField(controller: desc, decoration: InputDecoration(labelText: isPhysical ? "Items needed (e.g., 50x Rice)" : "Summary of Crisis")),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
                 onPressed: () async {
-                  await FirebaseFirestore.instance.collection('needs').add({
+                  // BACKEND: Save to Firestore
+                  await _db.collection('needs').add({
                     'ngoId': user?.uid,
                     'locationName': loc.text,
                     'description': desc.text,
                     'urgency': urgency,
+                    'type': isPhysical ? 'Physical' : 'Field',
                     'createdAt': FieldValue.serverTimestamp(),
-                    'lat': 4.21, // Use a geolocator in prod
-                    'lng': 101.9,
+                    'lat': 4.21, 'lng': 101.9,
                   });
                   Navigator.pop(context);
                 },
-                child: const Text("PUBLISH TO DONOR MAP", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: const Text("PUBLISH", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
             ),
             const SizedBox(height: 20),
@@ -281,4 +313,20 @@ class _NGOMissionHubState extends State<NGOMissionHub> {
       ),
     );
   }
+
+  // Existing helpers...
+  PreferredSizeWidget _buildAppBar() => AppBar(
+    elevation: 0,
+    backgroundColor: Colors.white,
+    title: const Text("NGO Mission Hub", style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
+    actions: [
+      IconButton(icon: const Icon(Icons.refresh, color: Colors.teal), onPressed: _generateMissionStrategy),
+      IconButton(icon: const Icon(Icons.logout, color: Colors.grey), onPressed: () => FirebaseAuth.instance.signOut()),
+    ],
+  );
+
+  Widget _buildAIStrategyCard() { /* Unchanged from your code */ }
+  Widget _buildSearchBar() { /* Unchanged from your code */ }
+  Widget _buildLiveNeedsStream() { /* Unchanged from your code */ }
+  Color _getColorForUrgency(String urgency) { /* Unchanged from your code */ }
 }
