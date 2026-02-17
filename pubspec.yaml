@@ -1,0 +1,24 @@
+name: kitacare_flutter
+description: KitaCare AI — Malaysian disaster relief ecosystem powered by AI.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.10.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP client — used for Gemini API calls in ai_advisor_screen.dart
+  # [BACKEND]: Replace direct Gemini calls with your backend proxy
+  http: ^1.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
