@@ -5,6 +5,10 @@
 import FlutterMacOS
 import Foundation
 
+<<<<<<< HEAD
+
+func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
+=======
 import file_selector_macos
 import firebase_auth
 import firebase_core
@@ -19,4 +23,5 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   GeolocatorPlugin.register(with: registry.registrar(forPlugin: "GeolocatorPlugin"))
   FPPPackageInfoPlusPlugin.register(with: registry.registrar(forPlugin: "FPPPackageInfoPlusPlugin"))
   UrlLauncherPlugin.register(with: registry.registrar(forPlugin: "UrlLauncherPlugin"))
+>>>>>>> origin/main
 }
