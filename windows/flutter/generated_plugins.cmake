@@ -3,6 +3,13 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+<<<<<<< HEAD
+=======
+  cloud_firestore
+  firebase_core
+  geolocator_windows
+  url_launcher_windows
+>>>>>>> origin/main
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

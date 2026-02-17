@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "922447048114",
+    "project_id": "silentsignalai-87900",
+    "storage_bucket": "silentsignalai-87900.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:922447048114:android:7ee1a2bd1c95c9322388ab",
+        "android_client_info": {
+          "package_name": "com.example.silent_signal"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBg9eOhAsZqw8pZVuitlE6YNmTgk39uSHQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
