@@ -1003,6 +1003,9 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 // Ensure you have run 'dart pub global run flutterfire_cli:flutterfire configure'
 import 'firebase_options.dart';
 import 'package:syncfusion_flutter_maps/maps.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
 
 // ==========================================
 // 1. CONFIG & THEME
@@ -1309,15 +1312,46 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   Widget _selectionView() {
     return Column(
+      key: const ValueKey('selection'),
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text("Selamat Datang", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         const Text("Select account type to continue", style: TextStyle(color: Colors.grey)),
         const SizedBox(height: 24),
-        _roleBtn("Individual Donor", "Track impact of your contributions", LucideIcons.user, kEmerald, () { setState(() { selectedRole = 'donor'; view = 'login'; }); }),
+
+        // Donor Button - Border turns Emerald when selected
+        _roleBtn(
+          "Individual Donor",
+          "Track impact of your contributions",
+          LucideIcons.user,
+          kEmerald,
+              () => setState(() => selectedRole = 'donor'),
+          isSelected: selectedRole == 'donor',
+        ),
+
         const SizedBox(height: 12),
-        _roleBtn("Malaysian NGO", "Manage field ops & verified needs", LucideIcons.building2, kBlue, () { setState(() { selectedRole = 'ngo'; view = 'login'; }); }),
+
+        // NGO Button - Border turns Blue when selected
+        _roleBtn(
+          "Malaysian NGO",
+          "Manage field ops & verified needs",
+          LucideIcons.building2,
+          kBlue,
+              () => setState(() => selectedRole = 'ngo'),
+          isSelected: selectedRole == 'ngo',
+        ),
+
+        const SizedBox(height: 32),
+
+        // "Continue" button appears only after selection
+        if (selectedRole != null)
+          _buildActionButton(
+            "Continue to Login",
+            selectedRole == 'ngo' ? kBlue : kEmerald,
+                () => setState(() => view = 'login'),
+            hasIcon: true,
+          ),
       ],
     );
   }
@@ -1445,18 +1479,79 @@ class _AuthWrapperState extends State<AuthWrapper> {
     );
   }
 
-  Widget _roleBtn(String title, String sub, IconData icon, Color color, VoidCallback tap) {
+  // Widget _roleBtn(String title, String sub, IconData icon, Color color, VoidCallback tap) {
+  //   return InkWell(
+  //     onTap: tap,
+  //     child: Container(
+  //       padding: const EdgeInsets.all(16),
+  //       decoration: BoxDecoration(color: color.withOpacity(0.05), border: Border.all(color: color.withOpacity(0.1)), borderRadius: BorderRadius.circular(20)),
+  //       child: Row(
+  //         children: [
+  //           Icon(icon, color: color),
+  //           const SizedBox(width: 16),
+  //           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.bold)), Text(sub, style: const TextStyle(fontSize: 11, color: Colors.grey))])),
+  //           Icon(LucideIcons.arrowRight, color: color, size: 18),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
+
+  Widget _roleBtn(String title, String sub, IconData icon, Color color, VoidCallback tap, {required bool isSelected}) {
     return InkWell(
       onTap: tap,
-      child: Container(
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: color.withOpacity(0.05), border: Border.all(color: color.withOpacity(0.1)), borderRadius: BorderRadius.circular(20)),
+        decoration: BoxDecoration(
+          // Background gets a slight tint of the role color when selected
+          color: isSelected ? color.withOpacity(0.08) : color.withOpacity(0.02),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            // Logic: If selected, use full role color (Emerald or Blue), else use a very faint version
+            color: isSelected ? color : color.withOpacity(0.1),
+            width: isSelected ? 2.5 : 1.5,
+          ),
+          boxShadow: isSelected
+              ? [BoxShadow(color: color.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))]
+              : [],
+        ),
         child: Row(
           children: [
-            Icon(icon, color: color),
+            // Icon Box
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                  color: isSelected ? color : color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12)
+              ),
+              child: Icon(icon, color: isSelected ? Colors.white : color, size: 20),
+            ),
             const SizedBox(width: 16),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.bold)), Text(sub, style: const TextStyle(fontSize: 11, color: Colors.grey))])),
-            Icon(LucideIcons.arrowRight, color: color, size: 18),
+            // Text Content
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isSelected ? color : kSlate800,
+                      fontSize: 16
+                  )),
+                  Text(sub, style: TextStyle(
+                      color: isSelected ? color.withOpacity(0.7) : Colors.grey,
+                      fontSize: 11
+                  )),
+                ],
+              ),
+            ),
+            // Change Arrow to Checkmark when selected
+            Icon(
+                isSelected ? LucideIcons.checkCircle2 : LucideIcons.arrowRight,
+                color: color,
+                size: 18
+            ),
           ],
         ),
       ),
@@ -2386,154 +2481,338 @@ class SectionTitle extends StatelessWidget {
     );
   }
 }
+
+Future<void> listAvailableModels() async {
+  final apiKey = dotenv.env['GEMINI_KEY']; // Ensure this matches your .env key
+  final url = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey");
+
+  try {
+    final response = await http.get(url);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      print("--- AVAILABLE MODELS ---");
+      for (var model in data['models']) {
+        print("Model Name: ${model['name']}");
+        print("Methods: ${model['supportedGenerationMethods']}");
+        print("-------------------------");
+      }
+    } else {
+      print("Failed to list models: ${response.statusCode}");
+      print("Response: ${response.body}");
+    }
+  } catch (e) {
+    print("Error listing models: $e");
+  }
+}
+
+// ==========================================
+// GLOBAL CACHE (Above the class)
+// ==========================================
+List<dynamic> _cachedAiNeeds = [];
+DateTime? _lastFetchTime;
+String _globalLastUpdated = "Never";
+DateTime? _lastSuccessfulFetch;
+
 class ReliefMap extends StatefulWidget {
   const ReliefMap({super.key});
-
   @override
   State<ReliefMap> createState() => _ReliefMapState();
-}
+  }
 
 class _ReliefMapState extends State<ReliefMap> {
   String _selectedFilter = "All";
   final List<String> _categories = ["All", "Flood Relief", "Food Security", "Medical Aid"];
-  late MapZoomPanBehavior _zoomPanBehavior;
 
+  // Behavior object
+  late MapZoomPanBehavior _zoomPanBehavior;
+  final ScrollController _pageScrollController = ScrollController();
+
+  String? _selectedLocationId;
   List<dynamic> aiNeeds = [];
   bool isLoading = true;
+  String lastUpdatedText = "Never";
 
   @override
   void initState() {
     super.initState();
+    _initMapBehavior();
+    _syncReliefData();
+  }
+
+  void _initMapBehavior() {
     _zoomPanBehavior = MapZoomPanBehavior(
-      // Shifts center East to 109.0 to balance Peninsular and Borneo
       focalLatLng: const MapLatLng(4.5, 109.3),
-      // Level 4 is usually perfect for showing the full width of Malaysia on mobile
       zoomLevel: 4,
       enableDoubleTapZooming: true,
       enablePinching: true,
       enablePanning: true,
     );
+  }
 
+  void _safeMapMove({required MapLatLng latLng, required double zoom}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _fetchRealTimeAIData();
+      if (mounted) {
+        try {
+          // Direct update to behavior without calling setState
+          // This is how Syncfusion handles smooth animations internally
+          _zoomPanBehavior.focalLatLng = latLng;
+          _zoomPanBehavior.zoomLevel = zoom;
+        } catch (e) {
+          debugPrint("Map move ignored: Engine busy");
+        }
+      }
     });
   }
 
-  Future<void> _fetchRealTimeAIData() async {
+  void _handleMarkerSelection(int index, Map<String, dynamic> data) {
     if (!mounted) return;
+
+    // 1. Update UI (Green Border & Card Highlight)
+    setState(() {
+      _selectedLocationId = data['location'].toString().trim();
+    });
+
+    // 2. Move camera safely using a small delay
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted) return;
+      try {
+        final double lat = double.tryParse(data['lat']?.toString() ?? "") ?? 4.5;
+        final double lng = double.tryParse(data['lng']?.toString() ?? "") ?? 109.3;
+
+        _zoomPanBehavior.focalLatLng = MapLatLng(lat, lng);
+        _zoomPanBehavior.zoomLevel = 10;
+      } catch (e) {
+        debugPrint("Camera move prevented crash.");
+      }
+    });
+
+    // 3. Scroll to the card
+    if (_pageScrollController.hasClients) {
+      double scrollOffset = 450.0 + (index * 210.0);
+      _pageScrollController.animateTo(
+        scrollOffset.clamp(0, _pageScrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  void _onMarkerTapped(int index, Map<String, dynamic> data) {
+    String locId = (data['location'] ?? "").toString().trim();
+
+    // Update the Green Border
+    setState(() {
+      _selectedLocationId = locId;
+    });
+
+    // Move Map safely
+    _safeMapMove(
+      latLng: MapLatLng(
+        double.tryParse(data['lat'].toString()) ?? 4.5,
+        double.tryParse(data['lng'].toString()) ?? 109.3,
+      ),
+      zoom: 10,
+    );
+
+    // Scroll the list below the map
+    if (_pageScrollController.hasClients) {
+      double scrollOffset = 450.0 + (index * 210.0);
+      _pageScrollController.animateTo(
+        scrollOffset.clamp(0, _pageScrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 800),
+        curve: Curves.fastOutSlowIn,
+      );
+    }
+  }
+
+  // --- THE CORE LOGIC: SYNC BETWEEN FIRESTORE CACHE AND AI ---
+  Future<void> _syncReliefData() async {
     setState(() => isLoading = true);
 
     try {
-      final apiKey = dotenv.env['GEMINI_KEY'];
-      if (apiKey == null || apiKey.isEmpty) {
-        throw Exception("API Key Missing");
+      // 1. GET DATA FROM FIRESTORE
+      final snapshot = await FirebaseFirestore.instance
+          .collection('relief_cache')
+          .doc('current_status')
+          .get();
+
+      if (snapshot.exists) {
+        final data = snapshot.data()!;
+        final Timestamp timestamp = data['timestamp'];
+        final DateTime lastFetch = timestamp.toDate();
+        final List<dynamic> cachedResults = data['results'];
+
+        // If data is fresh (less than 30 mins old), use it and STOP.
+        if (DateTime.now().difference(lastFetch).inMinutes < 30) {
+          debugPrint("Using fresh Firestore Cache.");
+          _updateUI(cachedResults, lastFetch);
+          return;
+        }
+
+        // 2. CACHE IS OLD - TRY TO REFRESH WITH AI
+        debugPrint("Cache old. Attempting AI Refresh...");
+        bool success = await _fetchNewDataFromAI();
+
+        // 3. FALLBACK: If AI fails (Quota), show the old data anyway!
+        if (!success) {
+          debugPrint("AI failed. Falling back to stale Firestore data.");
+          _updateUI(cachedResults, lastFetch);
+          // Optional: Show a toast saying "Showing older data due to server limit"
+        }
+      } else {
+        // No cache exists at all
+        await _fetchNewDataFromAI();
       }
 
-      final model = GenerativeModel(
-          model: 'gemini-3-flash-preview', // Use 1.5 Flash for stability
-          apiKey: apiKey
-      );
+    } catch (e) {
+      debugPrint("Sync Error: $e");
+    } finally {
+      if(mounted) setState(() => isLoading = false);
+    }
+  }
 
-      final prompt = """
-      ACT AS A DATA API.
-      Search for active humanitarian or disaster relief situations in Malaysia from the last 48 hours.
-      Focus on Floods, Food Security, and Medical Aid.
-      Return ONLY a RAW JSON LIST. No talk. No markdown. No backticks.
-      Format: [{"location": "City, State", "category": "Flood Relief", "description": "summary", "score": 90, "lat": 4.0, "lng": 101.0}]
-      """;
+  // Change this to return a bool (success/fail)
+  Future<bool> _fetchNewDataFromAI() async {
+    try {
+      final apiKey = dotenv.env['GEMINI_KEY'];
+      print("API KEY: ${dotenv.env['GEMINI_KEY']}");
+      final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey!);
+
+      final prompt = "Search active disaster situations in Malaysia (Last 48h). Categories: Flood Relief, Food Security, Medical Aid. Return strictly RAW JSON LIST ONLY. Format: [{\"location\": \"string\", \"category\": \"string\", \"description\": \"string\", \"score\": 90, \"lat\": 4.0, \"lng\": 101.0}]";
 
       final response = await model.generateContent([Content.text(prompt)]);
-
-      // --- IMPROVED JSON CLEANING ---
       String rawJson = response.text ?? "[]";
-      // Remove any markdown code block markers if the AI included them
-      rawJson = rawJson.replaceAll('```json', '').replaceAll('```', '').trim();
 
-      // Extract only the part between [ and ] if there is extra text
+      // Clean JSON string
+      rawJson = rawJson.replaceAll('```json', '').replaceAll('```', '').trim();
       int start = rawJson.indexOf('[');
       int end = rawJson.lastIndexOf(']');
-      if (start != -1 && end != -1) {
-        rawJson = rawJson.substring(start, end + 1);
-      }
+      if (start != -1 && end != -1) rawJson = rawJson.substring(start, end + 1);
 
       final List<dynamic> decoded = jsonDecode(rawJson);
 
-      if (mounted) {
-        setState(() {
-          aiNeeds = decoded;
-          isLoading = false;
-        });
-      }
+      // SAVE TO FIRESTORE
+      await FirebaseFirestore.instance.collection('relief_cache').doc('current_status').set({
+        'results': decoded,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      _updateUI(decoded, DateTime.now());
+      return true; // Success
+
     } catch (e) {
-      debugPrint("Gemini Error: $e");
+      debugPrint("AI Fetch Failed (Quota?): $e");
+      if (e.toString().contains('429') || e.toString().contains('quota')) {
+        debugPrint("Quota reached! Please wait 60 seconds.");
+        // Show a message to the user: "AI is resting, try again in a minute."
+      } else {
+        debugPrint("AI Error: $e");
+      }
+      return false; // Failed
     }
+  }
+
+  void _updateUI(List<dynamic> data, DateTime time) {
+    if (!mounted) return;
+    setState(() {
+      aiNeeds = data;
+      lastUpdatedText = "${time.hour}:${time.minute.toString().padLeft(2, '0')}";
+      isLoading = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    var filteredNeeds = _selectedFilter == "All"
+    final List<dynamic> filteredNeeds = _selectedFilter == "All"
         ? aiNeeds
         : aiNeeds.where((item) => item['category'] == _selectedFilter).toList();
 
-    // FIX: Wrap the entire thing in a SingleChildScrollView
     return SingleChildScrollView(
+      controller: _pageScrollController,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. HEADER SECTION
-          Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text("Relief Heatmap",
-                        style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800, color: kSlate800)),
-                    IconButton(
-                        onPressed: _fetchRealTimeAIData,
-                        icon: const Icon(LucideIcons.refreshCw, size: 20, color: kEmerald)
-                    )
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
+        Padding(
+                  padding: const EdgeInsets.all(20.0),
                   child: Row(
-                    children: _categories.map((cat) => _buildFilterTab(cat)).toList(),
-                  ),
-                )
-              ],
-            ),
-          ),
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // 1. WRAP THIS COLUMN IN EXPANDED
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Malaysian Relief Heatmap",
+                                style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800, color: kSlate800)),
+                            const Text(
+                              "AI-correlated signal tracking for humanitarian aid.",
+                              style: TextStyle(color: kSlate500, fontSize: 13),
+                            ),
+                            Text("Updated at $lastUpdatedText",
+                                style: const TextStyle(color: kEmerald, fontSize: 10, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 16),
 
-          // 2. THE MAP SECTION
+                            // This will now scroll correctly because Expanded constrained the width
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(), // Optional: makes it feel smoother
+                              child: Row(
+                                children: _categories.map((cat) => _buildFilterTab(cat)).toList(),
+                              ),
+                            )
+                          ],
+                        ),
+                      ),
+                      // The Refresh Button stays on the right
+                      IconButton(
+                          onPressed: _syncReliefData,
+                          icon: const Icon(LucideIcons.refreshCw, size: 20, color: kSlate400)
+                      )
+                    ],
+                  ),
+                ), // Your existing header logic
+
+          // THE MAP CONTAINER
           Container(
-            height: 350, // Keep this height fixed
+            height: 380,
             margin: const EdgeInsets.symmetric(horizontal: 20),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              color: Colors.white,
-              border: Border.all(color: kSlate100),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15)],
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: kSlate100)
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(28),
               child: isLoading
                   ? const Center(child: CircularProgressIndicator(color: kEmerald))
                   : SfMaps(
+                // CRITICAL: This Key forces the map to RESTART from scratch
+                // every time you change a category. This stops the Red Screen.
+                key: ValueKey('sf_map_$_selectedFilter'),
                 layers: [
                   MapTileLayer(
                     urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     initialMarkersCount: filteredNeeds.length,
                     zoomPanBehavior: _zoomPanBehavior,
                     markerBuilder: (context, index) {
-                      var data = filteredNeeds[index];
+                      if (index >= filteredNeeds.length) return const MapMarker(latitude: 0, longitude: 0, child: SizedBox());
+
+                      final data = filteredNeeds[index];
+                      final String locName = (data['location'] ?? "").toString().trim();
+
+                      // This boolean determines if the marker gets the green border
+                      final bool isSelected = locName == _selectedLocationId;
+
                       return MapMarker(
-                        latitude: data['lat'] ?? 4.0,
-                        longitude: data['lng'] ?? 101.0,
-                        child: _buildMapMarker(data['category'] ?? "General"),
+                        latitude: double.tryParse(data['lat']?.toString() ?? "") ?? 4.5,
+                        longitude: double.tryParse(data['lng']?.toString() ?? "") ?? 109.3,
+                        child: GestureDetector(
+                          // The Key is essential! It tells Flutter to repaint when isSelected changes.
+                          key: ValueKey('marker_visual_${locName}_$isSelected'),
+                          onTap: () => _handleMarkerSelection(index, data),
+                          child: _buildMapMarker(
+                              data['category'] ?? "General",
+                              isSelected: isSelected // Passing it to the UI helper
+                          ),
+                        ),
                       );
                     },
                   ),
@@ -2544,73 +2823,238 @@ class _ReliefMapState extends State<ReliefMap> {
 
           const SizedBox(height: 24),
 
-          // 3. THE LIST SECTION
-          // REMOVE 'Expanded' and add 'shrinkWrap: true' to the ListView
+          // --- PASTE THE ZOOM & RESET CONTROLS HERE ---
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: ListView.builder(
-              shrinkWrap: true, // IMPORTANT: Allows ListView to exist inside SingleChildScrollView
-              physics: const NeverScrollableScrollPhysics(), // IMPORTANT: Disables list scrolling so the whole page scrolls
-              itemCount: filteredNeeds.length,
-              itemBuilder: (context, index) => _buildAICard(filteredNeeds[index]),
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // ZOOM OUT
+                _smallBtn(LucideIcons.minus, () => _zoomStep(false)),
+
+                const SizedBox(width: 16),
+
+                // RESET VIEW
+                GestureDetector(
+                  onTap: _resetView,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: kSlate100),
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(LucideIcons.maximize, size: 16, color: kSlate800),
+                        const SizedBox(width: 8),
+                        Text("Reset View", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: kSlate800)),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 16),
+
+                // ZOOM IN
+                _smallBtn(LucideIcons.plus, () => _zoomStep(true)),
+              ],
             ),
           ),
 
-          const SizedBox(height: 40), // Extra space at bottom
+          // THE LIST
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: filteredNeeds.length,
+              itemBuilder: (context, index) {
+                final item = filteredNeeds[index];
+                final isSelected = item['location'].toString().trim() == _selectedLocationId;
+                return _buildAICard(item, index, isSelected);
+              },
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildMapMarker(String category) {
-    Color markerColor = category == 'Flood Relief' ? Colors.red : kEmerald;
-    return Icon(LucideIcons.mapPin, color: markerColor, size: 28);
-  }
-
+  // --- FILTER TAB LOGIC (Reset session) ---
   Widget _buildFilterTab(String label) {
     bool isSelected = _selectedFilter == label;
     return GestureDetector(
-      onTap: () => setState(() => _selectedFilter = label),
+      onTap: () {
+        if (_selectedFilter == label) return;
+
+        setState(() {
+          _selectedFilter = label;
+          _selectedLocationId = null;
+          // Refresh the behavior object for the new map instance
+          _initMapBehavior();
+        });
+      },
       child: Container(
         margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? kEmerald : Colors.white,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: isSelected ? kEmerald : kSlate100),
         ),
-        child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : kSlate400)),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? Colors.white : kSlate500
+            )
+        ),
+      ),
+    );
+  }
+  // --- VIEW ON MAP LOGIC (Direct to location) ---
+  void _directToLocation(Map<String, dynamic> item, int index) {
+    setState(() {
+      _selectedLocationId = item['location'].toString().trim();
+
+      // Update Map View
+      _zoomPanBehavior.focalLatLng = MapLatLng(
+          double.parse(item['lat'].toString()),
+          double.parse(item['lng'].toString())
+      );
+      _zoomPanBehavior.zoomLevel = 10;
+    });
+
+    // Scroll to the card in the list
+    double scrollOffset = 450.0 + (index * 210.0);
+    _pageScrollController.animateTo(
+      scrollOffset,
+      duration: const Duration(milliseconds: 800),
+      curve: Curves.fastOutSlowIn,
+    );
+  }
+
+  Widget _buildMapMarker(String category, {bool isSelected = false}) {
+    // Map categories to colors
+    Color markerColor;
+    switch (category) {
+      case 'Flood Relief':
+        markerColor = Colors.blueAccent;
+        break;
+      case 'Medical Aid':
+        markerColor = Colors.redAccent;
+        break;
+      case 'Food Security':
+        markerColor = Colors.orange;
+        break;
+      default:
+        markerColor = kSlate400;
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      padding: const EdgeInsets.all(2), // Space between icon and border
+      decoration: BoxDecoration(
+        color: Colors.white, // White background for the icon
+        shape: BoxShape.circle,
+        border: Border.all(
+          // THE FIX: Use kEmerald for the border color when selected
+          color: isSelected ? kEmerald : Colors.white,
+          width: isSelected ? 4 : 2, // Thicker border when selected
+        ),
+        boxShadow: isSelected
+            ? [BoxShadow(color: kEmerald.withOpacity(0.4), blurRadius: 12, spreadRadius: 2)]
+            : [const BoxShadow(color: Colors.black12, blurRadius: 4)],
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: markerColor, // The actual category color
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          category == 'Flood Relief' ? LucideIcons.droplets : LucideIcons.mapPin,
+          color: Colors.white,
+          size: isSelected ? 18 : 14,
+        ),
       ),
     );
   }
 
-  Widget _buildAICard(Map<String, dynamic> item) {
-    return Container(
+  Widget _smallBtn(IconData icon, VoidCallback tap) {
+    return GestureDetector(onTap: tap, child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: kSlate100)), child: Icon(icon, size: 20)));
+  }
+
+  // UI HELPER FOR ZOOM BUTTONS
+  Widget _zoomControlBtn(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
+          border: Border.all(color: kSlate100),
+        ),
+        child: Icon(icon, size: 20, color: kSlate800),
+      ),
+    );
+  }
+
+  // Updated Card with "View on Map" logic
+  Widget _buildAICard(Map<String, dynamic> item, int index, bool isSelected) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: kSlate100)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: isSelected ? kEmerald : kSlate100, width: isSelected ? 2.5 : 1),
+        boxShadow: isSelected ? [BoxShadow(color: kEmerald.withOpacity(0.1), blurRadius: 10)] : [],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(item['category']?.toString().toUpperCase() ?? "GENERAL", style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: kSlate400)),
           const SizedBox(height: 8),
-          Text(item['location'] ?? "Unknown Location", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kSlate800)),
+          Text(item['location'] ?? "Unknown", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 4),
-          Text(item['description'] ?? "No description available", style: const TextStyle(color: kSlate500, fontSize: 12)),
+          Text(item['description'] ?? "", style: const TextStyle(color: kSlate500, fontSize: 12)),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {
-                _zoomPanBehavior.focalLatLng = MapLatLng(item['lat'], item['lng']);
-                _zoomPanBehavior.zoomLevel = 10;
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: kEmerald, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              onPressed: () => _handleMarkerSelection(index, item),
+              style: ElevatedButton.styleFrom(backgroundColor: kEmerald, foregroundColor: Colors.white),
               child: const Text("View on Map"),
             ),
           )
         ],
       ),
     );
+  }
+
+  // Function for manual zoom buttons (+ / -)
+  void _zoomStep(bool isIn) {
+    _safeMapMove(
+      // The ?? operator says: "Use focalLatLng, but if it's null, use these coordinates"
+      latLng: _zoomPanBehavior.focalLatLng ?? const MapLatLng(4.5, 109.3),
+      zoom: (_zoomPanBehavior.zoomLevel + (isIn ? 1 : -1)).clamp(1.0, 15.0),
+    );
+  }
+
+  // Function to reset view to Malaysia overview (Like the first click)
+  void _resetView() {
+    _safeMapMove(
+      latLng: const MapLatLng(4.5, 109.3), // Initial Malaysia center
+      zoom: 4,                             // Initial zoom level
+    );
+    setState(() {
+      _selectedLocationId = null; // Optional: clear green border on reset
+    });
   }
 }

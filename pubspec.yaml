@@ -33,7 +33,7 @@ dependencies:
   firebase_core: ^4.4.0
   firebase_auth: ^6.1.4
   syncfusion_flutter_maps: ^32.2.3  # Use this exact version
-  google_generative_ai: ^0.4.7
+  google_generative_ai: ^0.4.3
   geolocator: ^14.0.2
   camera: ^0.11.3
   image_picker: ^1.2.1
