@@ -1,995 +1,3 @@
-// import 'package:flutter/material.dart';
-// import 'package:firebase_core/firebase_core.dart';
-// import 'package:firebase_auth/firebase_auth.dart';
-// import 'package:syncfusion_flutter_maps/maps.dart';
-// import 'package:google_generative_ai/google_generative_ai.dart';
-// import 'package:flutter_dotenv/flutter_dotenv.dart';
-//
-// // --- CONFIG ---
-// // Custom Emerald color to match the React/Tailwind UI
-// const Color emeraldColor = Color(0xFF10B981);
-// const Color donorPrimary = Color(0xFF059669);
-// const Color ngoPrimary = Color(0xFF2563EB);
-//
-// // --- MODELS & MOCK DATA ---
-// enum UserRole { donor, ngo }
-//
-// class Need {
-//   final String location, category, desc, verifiedBy;
-//   final int score;
-//   final MapLatLng coords;
-//   Need({
-//     required this.location,
-//     required this.category,
-//     required this.desc,
-//     required this.verifiedBy,
-//     required this.score,
-//     required this.coords
-//   });
-// }
-//
-// final List<Need> mockNeeds = [
-//   Need(location: "Rantau Panjang, Kelantan", category: "Flood Relief", score: 92, verifiedBy: "MERCY Malaysia", desc: "Immediate need for clean water.", coords: const MapLatLng(6.0028, 101.9750)),
-//   Need(location: "Baling, Kedah", category: "Food Security", score: 78, verifiedBy: "MyCARE", desc: "Dry food rations required.", coords: const MapLatLng(5.6766, 100.9167)),
-// ];
-//
-// void main() async {
-//   WidgetsFlutterBinding.ensureInitialized();
-//   await dotenv.load(fileName: ".env");
-//
-//   try {
-//     await Firebase.initializeApp(
-//       options: FirebaseOptions(
-//         apiKey: dotenv.env['FIREBASE_KEY']!,
-//         appId: "1:922447048114:android:7ee1a2bd1c95c9322388ab",
-//         messagingSenderId: "922447048114",
-//         projectId: "silentsignalai-87900",
-//         storageBucket: "silentsignalai-87900.firebasestorage.app",
-//       ),
-//     );
-//   } catch (e) {
-//     debugPrint("Firebase Error: $e");
-//   }
-//
-//   runApp(const KitaCareApp());
-// }
-//
-// class KitaCareApp extends StatelessWidget {
-//   const KitaCareApp({super.key});
-//   @override
-//   Widget build(BuildContext context) {
-//     return MaterialApp(
-//       debugShowCheckedModeBanner: false,
-//       theme: ThemeData(
-//         useMaterial3: true,
-//         fontFamily: 'Inter',
-//         colorScheme: ColorScheme.fromSeed(seedColor: donorPrimary),
-//       ),
-//       home: const AuthWrapper(),
-//     );
-//   }
-// }
-//
-// class AuthWrapper extends StatefulWidget {
-//   const AuthWrapper({super.key});
-//   @override
-//   State<AuthWrapper> createState() => _AuthWrapperState();
-// }
-//
-// class _AuthWrapperState extends State<AuthWrapper> {
-//   UserRole? selectedRole;
-//   bool isLocalLoggedIn = false; // Local flag to bypass Firebase for testing
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     // If we have selected a role, show the MainShell
-//     if (isLocalLoggedIn && selectedRole != null) {
-//       return MainShell(role: selectedRole!);
-//     }
-//
-//     // Otherwise, show the selection screen
-//     return RoleSelectionScreen(onRoleSelected: (role) {
-//       setState(() {
-//         selectedRole = role;
-//         isLocalLoggedIn = true; // Set to true so the screen switches
-//       });
-//       print("Role selected: $role");
-//     });
-//   }
-// }
-//
-// // --- 1. ROLE SELECTION ---
-// class RoleSelectionScreen extends StatelessWidget {
-//   final Function(UserRole) onRoleSelected;
-//   const RoleSelectionScreen({super.key, required this.onRoleSelected});
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       body: Container(
-//         decoration: const BoxDecoration(
-//           image: DecorationImage(
-//             image: NetworkImage('https://images.unsplash.com/photo-1548337138-e87d889cc369?q=80&w=1000'),
-//             fit: BoxFit.cover,
-//             colorFilter: ColorFilter.mode(Colors.black54, BlendMode.darken),
-//           ),
-//         ),
-//         child: Padding(
-//           padding: const EdgeInsets.all(24.0),
-//           child: Column(
-//             mainAxisAlignment: MainAxisAlignment.center,
-//             crossAxisAlignment: CrossAxisAlignment.start,
-//             children: [
-//               const Icon(Icons.favorite, color: emeraldColor, size: 50),
-//               const SizedBox(height: 10),
-//               const Text("KitaCare AI",
-//                   style: TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.w900)),
-//               const Text("Rakyat Menjaga Rakyat.",
-//                   style: TextStyle(color: Colors.tealAccent, fontSize: 24, fontStyle: FontStyle.italic)),
-//               const SizedBox(height: 40),
-//               _roleButton(context, "Individual Donor", "Track your impact", Icons.person, donorPrimary, UserRole.donor),
-//               const SizedBox(height: 16),
-//               _roleButton(context, "Malaysian NGO", "Manage field ops", Icons.business, ngoPrimary, UserRole.ngo),
-//             ],
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-//
-//   Widget _roleButton(BuildContext context, String title, String sub, IconData icon, Color color, UserRole role) {
-//     return Material(
-//       color: Colors.transparent, // Required for InkWell splash to show
-//       child: InkWell(
-//         onTap: () => onRoleSelected(role),
-//         borderRadius: BorderRadius.circular(24),
-//         child: Container(
-//           padding: const EdgeInsets.all(20),
-//           decoration: BoxDecoration(
-//               color: Colors.white.withOpacity(0.9),
-//               borderRadius: BorderRadius.circular(24)
-//           ),
-//           child: Row(
-//             children: [
-//               CircleAvatar(backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color)),
-//               const SizedBox(width: 20),
-//               Expanded(child: Column(
-//                   crossAxisAlignment: CrossAxisAlignment.start,
-//                   children: [
-//                     Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black)),
-//                     Text(sub, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-//                   ]
-//               )),
-//               const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-//             ],
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-// }
-//
-// // --- 2. MAIN APP SHELL ---
-// class MainShell extends StatefulWidget {
-//   final UserRole role;
-//   const MainShell({super.key, required this.role});
-//   @override
-//   State<MainShell> createState() => _MainShellState();
-// }
-//
-// class _MainShellState extends State<MainShell> {
-//   int _selectedIndex = 0;
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     final color = widget.role == UserRole.donor ? donorPrimary : ngoPrimary;
-//
-//     final screens = [
-//       widget.role == UserRole.donor ? const DonorDashboard() : const NGODashboard(),
-//       const ReliefMap(),
-//       AIAdvisor(role: widget.role),
-//       const ImpactAnalytics(),
-//     ];
-//
-//     return Scaffold(
-//       appBar: AppBar(
-//         title: Text("KitaCare ${widget.role.name.toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold)),
-//         backgroundColor: Colors.white,
-//         elevation: 0,
-//       ),
-//       drawer: Drawer(
-//         child: Column(
-//           children: [
-//             UserAccountsDrawerHeader(
-//               decoration: BoxDecoration(color: color),
-//               accountName: Text(widget.role == UserRole.donor ? "Ahmad S." : "MERCY Malaysia"),
-//               accountEmail: Text(widget.role == UserRole.donor ? "Donor ID: KC-88" : "NGO ID: PPM-001"),
-//               currentAccountPicture: const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.person)),
-//             ),
-//             _navItem(0, Icons.dashboard, "Mission Hub"),
-//             _navItem(1, Icons.map, "Relief Map"),
-//             _navItem(2, Icons.message, "AI Advisor"),
-//             _navItem(3, Icons.bar_chart, "Impact Tracking"),
-//             const Spacer(),
-//             ListTile(leading: const Icon(Icons.logout, color: Colors.red), title: const Text("Logout"), onTap: () => FirebaseAuth.instance.signOut()),
-//           ],
-//         ),
-//       ),
-//       body: screens[_selectedIndex],
-//     );
-//   }
-//
-//   Widget _navItem(int index, IconData icon, String label) {
-//     return ListTile(
-//       leading: Icon(icon, color: _selectedIndex == index ? emeraldColor : Colors.grey),
-//       title: Text(label, style: TextStyle(fontWeight: _selectedIndex == index ? FontWeight.bold : FontWeight.normal)),
-//       onTap: () => setState(() { _selectedIndex = index; Navigator.pop(context); }),
-//     );
-//   }
-// }
-//
-// // --- 3. DONOR DASHBOARD ---
-// class DonorDashboard extends StatelessWidget {
-//   const DonorDashboard({super.key});
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return SingleChildScrollView(
-//       padding: const EdgeInsets.all(20),
-//       child: Column(
-//         crossAxisAlignment: CrossAxisAlignment.start,
-//         children: [
-//           const Text("Hello, Ahmad", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-//           const Text("Your contributions are reshaping lives.", style: TextStyle(color: Colors.grey)),
-//           const SizedBox(height: 20),
-//           Row(
-//             children: [
-//               _statCard("Impact Value", "RM 400.00", emeraldColor),
-//               const SizedBox(width: 10),
-//               _statCard("Lives Touched", "~120", Colors.blue),
-//             ],
-//           ),
-//           const SizedBox(height: 30),
-//           const Text("Active Tracking", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-//           const SizedBox(height: 15),
-//           _trackingCard(),
-//         ],
-//       ),
-//     );
-//   }
-//
-//   Widget _statCard(String label, String val, Color color) {
-//     return Expanded(
-//       child: Container(
-//         padding: const EdgeInsets.all(20),
-//         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey.shade100)),
-//         child: Column(children: [
-//           Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
-//           Text(val, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
-//         ]),
-//       ),
-//     );
-//   }
-//
-//   Widget _trackingCard() {
-//     return Container(
-//       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.grey.shade200)),
-//       child: Column(
-//         children: [
-//           const ListTile(title: Text("Kelantan Flood Relief", style: TextStyle(fontWeight: FontWeight.bold)), subtitle: Text("Donation ID: KC-88421"), trailing: Chip(label: Text("In Transit"))),
-//           Padding(
-//             padding: const EdgeInsets.all(20.0),
-//             child: Column(
-//               children: [
-//                 _timelineStep("Donation Received", "Oct 24", true),
-//                 _timelineStep("Items Procured", "Oct 25", true),
-//                 _timelineStep("Lorry Dispatched", "Oct 26", true),
-//                 _timelineStep("Distribution at Site", "Est. Oct 27", false),
-//               ],
-//             ),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-//
-//   Widget _timelineStep(String label, String date, bool done) {
-//     return Row(
-//       children: [
-//         Icon(done ? Icons.check_circle : Icons.radio_button_unchecked, color: done ? emeraldColor : Colors.grey, size: 20),
-//         const SizedBox(width: 15),
-//         Expanded(child: Text(label, style: TextStyle(color: done ? Colors.black : Colors.grey, fontWeight: done ? FontWeight.bold : FontWeight.normal))),
-//         Text(date, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-//       ],
-//     );
-//   }
-// }
-//
-// // --- 4. NGO DASHBOARD ---
-// class NGODashboard extends StatefulWidget {
-//   const NGODashboard({super.key});
-//   @override
-//   State<NGODashboard> createState() => _NGODashboardState();
-// }
-//
-// class _NGODashboardState extends State<NGODashboard> {
-//   bool isVerified = false;
-//   @override
-//   Widget build(BuildContext context) {
-//     if (!isVerified) {
-//       return Center(
-//         child: Padding(
-//           padding: const EdgeInsets.all(40.0),
-//           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-//             const Icon(Icons.lock, size: 64, color: Colors.blue),
-//             const SizedBox(height: 20),
-//             const Text("NGO Secure Console", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-//             const Text("Enter official project PIN to access operations.", textAlign: TextAlign.center),
-//             const SizedBox(height: 20),
-//             const TextField(obscureText: true, textAlign: TextAlign.center, decoration: InputDecoration(hintText: "PIN CODE")),
-//             const SizedBox(height: 20),
-//             ElevatedButton(onPressed: () => setState(() => isVerified = true), child: const Text("Verify & Access")),
-//           ]),
-//         ),
-//       );
-//     }
-//     return const Center(child: Text("Operational Hub Active: Managed Zones List"));
-//   }
-// }
-//
-// // --- 5. AI ADVISOR ---
-// class AIAdvisor extends StatefulWidget {
-//   final UserRole role;
-//   const AIAdvisor({super.key, required this.role});
-//   @override
-//   State<AIAdvisor> createState() => _AIAdvisorState();
-// }
-//
-// class _AIAdvisorState extends State<AIAdvisor> {
-//   final TextEditingController _controller = TextEditingController();
-//   List<Map<String, String>> chatHistory = [];
-//   bool isLoading = false;
-//
-//   Future<void> _sendMessage() async {
-//     final userText = _controller.text;
-//     if (userText.isEmpty) return;
-//
-//     setState(() {
-//       chatHistory.add({"role": "user", "content": userText});
-//       isLoading = true;
-//       _controller.clear();
-//     });
-//
-//     final model = GenerativeModel(model: 'gemini-3-flash-preview', apiKey: dotenv.env['GEMINI_KEY']!);
-//
-//     final systemPrompt = widget.role == UserRole.ngo
-//         ? "You are KitaCare NGO AI. Help Malaysian NGOs with logistics and receipts. Use terms like 'ROS registration' and 'Inventory'."
-//         : "You are KitaCare AI for Donors. Help Malaysians with transparency and item matching. Use terms like 'Sadaqah' and 'Impact Tracking'.";
-//
-//     final response = await model.generateContent([Content.text("$systemPrompt User: $userText")]);
-//
-//     setState(() {
-//       chatHistory.add({"role": "ai", "content": response.text ?? "Error connecting to advisor."});
-//       isLoading = false;
-//     });
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Column(
-//       children: [
-//         Expanded(
-//           child: ListView.builder(
-//             padding: const EdgeInsets.all(20),
-//             itemCount: chatHistory.length,
-//             itemBuilder: (context, i) => _chatBubble(chatHistory[i]),
-//           ),
-//         ),
-//         if (isLoading) const LinearProgressIndicator(),
-//         Padding(
-//           padding: const EdgeInsets.all(15.0),
-//           child: Row(
-//             children: [
-//               Expanded(child: TextField(controller: _controller, decoration: const InputDecoration(hintText: "Ask KitaCare AI..."))),
-//               IconButton(onPressed: _sendMessage, icon: const Icon(Icons.send, color: emeraldColor)),
-//             ],
-//           ),
-//         )
-//       ],
-//     );
-//   }
-//
-//   Widget _chatBubble(Map<String, String> msg) {
-//     bool isUser = msg['role'] == 'user';
-//     return Align(
-//       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-//       child: Container(
-//         margin: const EdgeInsets.symmetric(vertical: 5),
-//         padding: const EdgeInsets.all(15),
-//         decoration: BoxDecoration(
-//           color: isUser ? emeraldColor : Colors.grey.shade100,
-//           borderRadius: BorderRadius.circular(20),
-//         ),
-//         child: Text(msg['content']!, style: TextStyle(color: isUser ? Colors.white : Colors.black)),
-//       ),
-//     );
-//   }
-// }
-//
-// // --- 6. REMAINING SCREENS ---
-// class ReliefMap extends StatelessWidget {
-//   const ReliefMap({super.key});
-//   @override
-//   Widget build(BuildContext context) {
-//     return SfMaps(layers: [
-//       MapTileLayer(
-//         urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-//         initialMarkersCount: mockNeeds.length,
-//         markerBuilder: (ctx, i) => MapMarker(
-//           latitude: mockNeeds[i].coords.latitude,
-//           longitude: mockNeeds[i].coords.longitude,
-//           child: const Icon(Icons.location_on, color: Colors.red),
-//         ),
-//       )
-//     ]);
-//   }
-// }
-//
-// class ImpactAnalytics extends StatelessWidget {
-//   const ImpactAnalytics({super.key});
-//   @override
-//   Widget build(BuildContext context) {
-//     return const Center(child: Text("Detailed Mission Operational Data"));
-//   }
-// }
-// import 'package:flutter/material.dart';
-// import 'package:firebase_core/firebase_core.dart';
-// import 'package:firebase_auth/firebase_auth.dart';
-// import 'package:cloud_firestore/cloud_firestore.dart';
-// import 'package:google_fonts/google_fonts.dart';
-// import 'package:lucide_icons/lucide_icons.dart';
-// import 'package:google_generative_ai/google_generative_ai.dart';
-// import 'package:qr_flutter/qr_flutter.dart';
-//
-// // ==========================================
-// // 1. CONFIG & THEME
-// // ==========================================
-// const Color kEmerald = Color(0xFF059669);
-// const Color kBlue = Color(0xFF2563EB);
-// const Color kSlate800 = Color(0xFF1E293B);
-//
-// void main() async {
-//   WidgetsFlutterBinding.ensureInitialized();
-//   // await Firebase.initializeApp(); // Uncomment after connecting your google-services.json
-//   runApp(const KitaCareApp());
-// }
-//
-// class KitaCareApp extends StatelessWidget {
-//   const KitaCareApp({super.key});
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return MaterialApp(
-//       title: 'KitaCare AI',
-//       debugShowCheckedModeBanner: false,
-//       theme: ThemeData(
-//         textTheme: GoogleFonts.interTextTheme(),
-//         useMaterial3: true,
-//       ),
-//       home: const AuthWrapper(),
-//     );
-//   }
-// }
-//
-// // ==========================================
-// // 2. AUTHENTICATION & ROLE SELECTION
-// // ==========================================
-// class AuthWrapper extends StatefulWidget {
-//   const AuthWrapper({super.key});
-//
-//   @override
-//   State<AuthWrapper> createState() => _AuthWrapperState();
-// }
-//
-// class _AuthWrapperState extends State<AuthWrapper> {
-//   String view = 'selection'; // selection, login, signup
-//   String? selectedRole; // donor, ngo
-//
-//   // Controllers for Sign Up
-//   final TextEditingController _nameController = TextEditingController();
-//   final TextEditingController _emailController = TextEditingController();
-//   final TextEditingController _idController = TextEditingController();
-//   final TextEditingController _regController = TextEditingController(); // For NGO
-//   final TextEditingController _passController = TextEditingController();
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       body: Stack(
-//         children: [
-//           // Background Image Logic
-//           Container(
-//             decoration: const BoxDecoration(
-//               image: DecorationImage(
-//                 image: NetworkImage("https://images.unsplash.com/photo-1548337138-e87d889cc369?q=80&w=2000"),
-//                 fit: BoxFit.cover,
-//               ),
-//             ),
-//           ),
-//           Container(color: Colors.black.withOpacity(0.6)),
-//
-//           SafeArea(
-//             child: SingleChildScrollView( // Added to prevent keyboard overflow
-//               padding: const EdgeInsets.symmetric(horizontal: 24.0),
-//               child: Column(
-//                 crossAxisAlignment: CrossAxisAlignment.start,
-//                 children: [
-//                   const SizedBox(height: 60),
-//                   _buildBranding(),
-//                   const SizedBox(height: 100), // Spacing logic
-//                   _buildAuthCard(),
-//                   const SizedBox(height: 40),
-//                 ],
-//               ),
-//             ),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-//
-//   // Same branding as before
-//   Widget _buildBranding() {
-//     return Column(
-//       crossAxisAlignment: CrossAxisAlignment.start,
-//       children: [
-//         Row(
-//           children: [
-//             Container(
-//               padding: const EdgeInsets.all(12),
-//               decoration: BoxDecoration(color: kEmerald, borderRadius: BorderRadius.circular(16)),
-//               child: const Icon(LucideIcons.heart, color: Colors.white, size: 28),
-//             ),
-//             const SizedBox(width: 12),
-//             Text("KitaCare AI", style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 32)),
-//           ],
-//         ),
-//         const SizedBox(height: 16),
-//         const Text("Rakyat Menjaga Rakyat.", style: TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.bold, fontStyle: FontStyle.italic)),
-//         const Text("The Malaysian disaster relief ecosystem powered by AI.", style: TextStyle(color: Colors.white70, fontSize: 16)),
-//       ],
-//     );
-//   }
-//
-//   Widget _buildAuthCard() {
-//     return Container(
-//       padding: const EdgeInsets.all(24),
-//       decoration: BoxDecoration(
-//         color: Colors.white,
-//         borderRadius: BorderRadius.circular(32),
-//         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20)],
-//       ),
-//       child: AnimatedSwitcher(
-//         duration: const Duration(milliseconds: 300),
-//         child: _getCurrentView(),
-//       ),
-//     );
-//   }
-//
-//   Widget _getCurrentView() {
-//     if (view == 'selection') return _selectionView();
-//     if (view == 'login') return _loginView();
-//     return _signUpView(); // Show Sign Up if view is 'signup'
-//   }
-//
-//   // 1. SELECTION VIEW
-//   Widget _selectionView() {
-//     return Column(
-//       key: const ValueKey('selection'),
-//       mainAxisSize: MainAxisSize.min,
-//       crossAxisAlignment: CrossAxisAlignment.start,
-//       children: [
-//         const Text("Selamat Datang", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-//         const Text("Select your account type to continue", style: TextStyle(color: Colors.grey)),
-//         const SizedBox(height: 24),
-//         _roleBtn("Individual Donor", "Track impact of your contributions", LucideIcons.user, kEmerald, () => _toView('login', 'donor')),
-//         const SizedBox(height: 12),
-//         _roleBtn("Malaysian NGO", "Manage field ops & verified needs", LucideIcons.building2, kBlue, () => _toView('login', 'ngo')),
-//         const SizedBox(height: 20),
-//         const Center(child: Text("COMPLIANCE WITH MALAYSIA ROS/SSM REGULATIONS", style: TextStyle(fontSize: 8, color: Colors.grey, fontWeight: FontWeight.bold))),
-//       ],
-//     );
-//   }
-//
-//   // 2. LOGIN VIEW
-//   Widget _loginView() {
-//     final themeColor = selectedRole == 'ngo' ? kBlue : kEmerald;
-//     return Column(
-//       key: const ValueKey('login'),
-//       mainAxisSize: MainAxisSize.min,
-//       children: [
-//         Row(children: [
-//           IconButton(onPressed: () => setState(() => view = 'selection'), icon: const Icon(LucideIcons.chevronLeft, size: 20)),
-//           Text("${selectedRole?.toUpperCase()} LOGIN", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-//         ]),
-//         const SizedBox(height: 24),
-//         _buildTextField("Email Address", LucideIcons.send, _emailController),
-//         const SizedBox(height: 16),
-//         _buildTextField("Password", LucideIcons.lock, _passController, obscure: true),
-//         const SizedBox(height: 24),
-//         _buildActionButton("Sign In", themeColor, () => Navigator.push(context, MaterialPageRoute(builder: (_) => AppShell(role: selectedRole!)))),
-//         const SizedBox(height: 16),
-//         TextButton(
-//           onPressed: () => setState(() => view = 'signup'),
-//           child: Text.rich(TextSpan(children: [
-//             const TextSpan(text: "Don't have an account? ", style: TextStyle(color: Colors.grey)),
-//             TextSpan(text: "Create New Account", style: TextStyle(color: themeColor, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
-//           ])),
-//         )
-//       ],
-//     );
-//   }
-//
-//   // 3. SIGN UP VIEW (The missing part)
-//   Widget _signUpView() {
-//     final themeColor = selectedRole == 'ngo' ? kBlue : kEmerald;
-//     return Column(
-//       key: const ValueKey('signup'),
-//       mainAxisSize: MainAxisSize.min,
-//       crossAxisAlignment: CrossAxisAlignment.start,
-//       children: [
-//         Row(children: [
-//           IconButton(onPressed: () => setState(() => view = 'login'), icon: const Icon(LucideIcons.chevronLeft, size: 20)),
-//           const Text("CREATE ACCOUNT", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-//         ]),
-//         const Padding(
-//           padding: EdgeInsets.only(left: 48, bottom: 20),
-//           child: Text("Provide official details to verify identity.", style: TextStyle(color: Colors.grey, fontSize: 12)),
-//         ),
-//         _buildTextField(selectedRole == 'ngo' ? "Official NGO Name" : "Full Name as per MyKad", LucideIcons.user, _nameController),
-//         if (selectedRole == 'ngo') ...[
-//           const SizedBox(height: 16),
-//           _buildTextField("ROS/SSM Reg No", LucideIcons.shieldCheck, _regController),
-//         ],
-//         const SizedBox(height: 16),
-//         _buildTextField("Identity ID (MyKad/Passport)", LucideIcons.receipt, _idController),
-//         const SizedBox(height: 16),
-//         _buildTextField("Official Email", LucideIcons.send, _emailController),
-//         const SizedBox(height: 16),
-//         _buildTextField("Secure Password", LucideIcons.lock, _passController, obscure: true),
-//         const SizedBox(height: 24),
-//         _buildActionButton("Register Account", themeColor, () => Navigator.push(context, MaterialPageRoute(builder: (_) => AppShell(role: selectedRole!)))),
-//       ],
-//     );
-//   }
-//
-//   // Helper methods to keep code clean
-//   void _toView(String v, String r) => setState(() { view = v; selectedRole = r; });
-//
-//   Widget _buildTextField(String hint, IconData icon, TextEditingController controller, {bool obscure = false}) {
-//     return TextField(
-//       controller: controller,
-//       obscureText: obscure,
-//       decoration: InputDecoration(
-//         hintText: hint,
-//         hintStyle: const TextStyle(fontSize: 14, color: Colors.grey),
-//         prefixIcon: Icon(icon, size: 18, color: Colors.grey),
-//         filled: true,
-//         fillColor: const Color(0xFFF8FAFC),
-//         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-//       ),
-//     );
-//   }
-//
-//   Widget _buildActionButton(String label, Color color, VoidCallback tap) {
-//     return SizedBox(
-//       width: double.infinity,
-//       height: 56,
-//       child: ElevatedButton(
-//         onPressed: tap,
-//         style: ElevatedButton.styleFrom(
-//           backgroundColor: color,
-//           foregroundColor: Colors.white,
-//           elevation: 4,
-//           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-//         ),
-//         child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-//       ),
-//     );
-//   }
-//
-//   Widget _roleBtn(String title, String sub, IconData icon, Color color, VoidCallback tap) {
-//     bool isSelected = selectedRole == (title.contains("Donor") ? "donor" : "ngo");
-//     return InkWell(
-//       onTap: tap,
-//       child: Container(
-//         padding: const EdgeInsets.all(16),
-//         decoration: BoxDecoration(
-//           color: color.withOpacity(0.05),
-//           border: Border.all(color: isSelected ? color : color.withOpacity(0.1), width: 1.5),
-//           borderRadius: BorderRadius.circular(20),
-//         ),
-//         child: Row(
-//           children: [
-//             Container(
-//               padding: const EdgeInsets.all(10),
-//               decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
-//               child: Icon(icon, color: Colors.white, size: 20),
-//             ),
-//             const SizedBox(width: 16),
-//             Expanded(
-//               child: Column(
-//                 crossAxisAlignment: CrossAxisAlignment.start,
-//                 children: [
-//                   Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-//                   Text(sub, style: const TextStyle(color: Colors.grey, fontSize: 11)),
-//                 ],
-//               ),
-//             ),
-//             Icon(LucideIcons.arrowRight, color: color, size: 18),
-//           ],
-//         ),
-//       ),
-//     );
-//   }
-// }
-//
-// // ==========================================
-// // 3. MAIN APP SHELL (NAVIGATION)
-// // ==========================================
-// class AppShell extends StatefulWidget {
-//   final String role;
-//   const AppShell({super.key, required this.role});
-//
-//   @override
-//   State<AppShell> createState() => _AppShellState();
-// }
-//
-// class _AppShellState extends State<AppShell> {
-//   int _index = 0;
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     final themeColor = widget.role == 'ngo' ? kBlue : kEmerald;
-//     final List<Widget> pages = [
-//       widget.role == 'ngo' ? const NGODashboard() : const DonorDashboard(),
-//       const ReliefMap(),
-//       AIAdvisor(role: widget.role),
-//       const AnalyticsPage(),
-//     ];
-//
-//     return Scaffold(
-//       body: pages[_index],
-//       bottomNavigationBar: BottomNavigationBar(
-//         currentIndex: _index,
-//         onTap: (v) => setState(() => _index = v),
-//         selectedItemColor: themeColor,
-//         unselectedItemColor: Colors.grey,
-//         type: BottomNavigationBarType.fixed,
-//         items: [
-//           const BottomNavigationBarItem(icon: Icon(LucideIcons.layoutDashboard), label: "Hub"),
-//           const BottomNavigationBarItem(icon: Icon(LucideIcons.map), label: "Map"),
-//           const BottomNavigationBarItem(icon: Icon(LucideIcons.messageSquare), label: "AI"),
-//           const BottomNavigationBarItem(icon: Icon(LucideIcons.barChart3), label: "Data"),
-//         ],
-//       ),
-//     );
-//   }
-// }
-//
-// // ==========================================
-// // 4. DONOR DASHBOARD & TRACKING
-// // ==========================================
-// class DonorDashboard extends StatelessWidget {
-//   const DonorDashboard({super.key});
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return SingleChildScrollView(
-//       padding: const EdgeInsets.all(24),
-//       child: Column(
-//         crossAxisAlignment: CrossAxisAlignment.start,
-//         children: [
-//           const SizedBox(height: 40),
-//           const Text("Hello, Ahmad", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-//           const Text("Impact: RM 400.00 • 120 Lives Touched", style: TextStyle(color: kEmerald, fontWeight: FontWeight.bold)),
-//           const SizedBox(height: 32),
-//           const SectionTitle(title: "Active Tracking", icon: LucideIcons.history, color: kEmerald),
-//           _buildTrackingCard(),
-//           const SizedBox(height: 24),
-//           _buildTrackingCard(isItem: true),
-//         ],
-//       ),
-//     );
-//   }
-//
-//   Widget _buildTrackingCard({bool isItem = false}) {
-//     return Container(
-//       margin: const EdgeInsets.only(top: 16),
-//       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.grey.withOpacity(0.1))),
-//       child: Column(
-//         children: [
-//           ListTile(
-//             leading: Icon(isItem ? LucideIcons.package : LucideIcons.banknote, color: isItem ? kBlue : kEmerald),
-//             title: Text(isItem ? "Keningau Learning Center" : "Kelantan Flood Relief", style: const TextStyle(fontWeight: FontWeight.bold)),
-//             subtitle: const Text("Status: In Transit", style: TextStyle(color: kEmerald, fontSize: 12, fontWeight: FontWeight.bold)),
-//           ),
-//           Padding(
-//             padding: const EdgeInsets.all(16.0),
-//             child: ClipRRect(
-//               borderRadius: BorderRadius.circular(16),
-//               child: Image.network(isItem ? "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=400" : "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=400", height: 120, width: double.infinity, fit: BoxFit.cover),
-//             ),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-// }
-//
-// // ==========================================
-// // 5. AI ADVISOR (GEMINI)
-// // ==========================================
-// class AIAdvisor extends StatefulWidget {
-//   final String role;
-//   const AIAdvisor({super.key, required this.role});
-//
-//   @override
-//   State<AIAdvisor> createState() => _AIAdvisorState();
-// }
-//
-// class _AIAdvisorState extends State<AIAdvisor> {
-//   final List<Map<String, String>> messages = [];
-//   final TextEditingController _ctrl = TextEditingController();
-//
-//   void sendMessage() async {
-//     final text = _ctrl.text;
-//     if (text.isEmpty) return;
-//     setState(() {
-//       messages.add({"role": "user", "content": text});
-//       _ctrl.clear();
-//     });
-//     // Simulate AI delay
-//     await Future.delayed(const Duration(seconds: 1));
-//     setState(() {
-//       messages.add({"role": "ai", "content": "I am looking into this for you. Based on current data from MERCY Malaysia, the most urgent need is at Rantau Panjang."});
-//     });
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     final themeColor = widget.role == 'ngo' ? kBlue : kEmerald;
-//     return Scaffold(
-//       appBar: AppBar(title: Text("KitaCare ${widget.role.toUpperCase()} AI", style: const TextStyle(fontWeight: FontWeight.bold))),
-//       body: Column(
-//         children: [
-//           Expanded(
-//             child: ListView.builder(
-//               padding: const EdgeInsets.all(16),
-//               itemCount: messages.length,
-//               itemBuilder: (context, i) {
-//                 final isUser = messages[i]['role'] == 'user';
-//                 return Align(
-//                   alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-//                   child: Container(
-//                     margin: const EdgeInsets.symmetric(vertical: 4),
-//                     padding: const EdgeInsets.all(12),
-//                     decoration: BoxDecoration(
-//                       color: isUser ? themeColor : Colors.grey[200],
-//                       borderRadius: BorderRadius.circular(16).copyWith(topRight: isUser ? Radius.zero : const Radius.circular(16), topLeft: isUser ? const Radius.circular(16) : Radius.zero),
-//                     ),
-//                     child: Text(messages[i]['content']!, style: TextStyle(color: isUser ? Colors.white : Colors.black)),
-//                   ),
-//                 );
-//               },
-//             ),
-//           ),
-//           Padding(
-//             padding: const EdgeInsets.all(16.0),
-//             child: Row(
-//               children: [
-//                 Expanded(child: TextField(controller: _ctrl, decoration: InputDecoration(hintText: "Ask KitaCare AI...", border: OutlineInputBorder(borderRadius: BorderRadius.circular(30))))),
-//                 const SizedBox(width: 8),
-//                 CircleAvatar(backgroundColor: themeColor, child: IconButton(onPressed: sendMessage, icon: const Icon(LucideIcons.send, color: Colors.white))),
-//               ],
-//             ),
-//           )
-//         ],
-//       ),
-//     );
-//   }
-// }
-//
-// // ==========================================
-// // 6. RELIEF HEATMAP (Simulation)
-// // ==========================================
-// class ReliefMap extends StatelessWidget {
-//   const ReliefMap({super.key});
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       body: Stack(
-//         children: [
-//           // Simulated Map
-//           Container(
-//             decoration: const BoxDecoration(image: DecorationImage(image: NetworkImage("https://images.unsplash.com/photo-1548337138-e87d889cc369?q=80&w=1200"), fit: BoxFit.cover)),
-//           ),
-//           // Markers
-//           _marker(top: 200, left: 150, color: Colors.red, label: "92% Critical"),
-//           _marker(top: 400, left: 250, color: Colors.orange, label: "78% Moderate"),
-//
-//           SafeArea(
-//             child: Padding(
-//               padding: const EdgeInsets.all(16.0),
-//               child: Column(
-//                 children: [
-//                   Container(
-//                     padding: const EdgeInsets.all(16),
-//                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)]),
-//                     child: const Row(
-//                       children: [
-//                         Icon(LucideIcons.mapPin, color: kEmerald),
-//                         SizedBox(width: 12),
-//                         Text("Active Disaster Zones", style: TextStyle(fontWeight: FontWeight.bold)),
-//                       ],
-//                     ),
-//                   )
-//                 ],
-//               ),
-//             ),
-//           )
-//         ],
-//       ),
-//     );
-//   }
-//
-//   Widget _marker({required double top, required double left, required Color color, required String label}) {
-//     return Positioned(
-//       top: top,
-//       left: left,
-//       child: Column(
-//         children: [
-//           Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4)), child: Text(label, style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold))),
-//           Icon(LucideIcons.alertCircle, color: color, size: 32),
-//         ],
-//       ),
-//     );
-//   }
-// }
-//
-// // ==========================================
-// // UTILS & COMPONENTS
-// // ==========================================
-// class SectionTitle extends StatelessWidget {
-//   final String title;
-//   final IconData icon;
-//   final Color color;
-//   const SectionTitle({super.key, required this.title, required this.icon, required this.color});
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Row(
-//       children: [
-//         Icon(icon, size: 20, color: color),
-//         const SizedBox(width: 8),
-//         Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-//       ],
-//     );
-//   }
-// }
-//
-// class NGODashboard extends StatelessWidget {
-//   const NGODashboard({super.key});
-//   @override
-//   Widget build(BuildContext context) => const Center(child: Text("NGO Operational View"));
-// }
-//
-// class AnalyticsPage extends StatelessWidget {
-//   const AnalyticsPage({super.key});
-//   @override
-//   Widget build(BuildContext context) => const Center(child: Text("Mission Analytics View"));
-// }
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -1071,42 +79,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
   final TextEditingController _idController = TextEditingController();
   final TextEditingController _regController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
-
-  // FIREBASE LOGIC
-  // Future<void> _handleAuth() async {
-  //   if (_emailController.text.isEmpty || _passController.text.isEmpty) return;
-  //   setState(() => _isLoading = true);
-  //
-  //   try {
-  //     if (view == 'signup') {
-  //       UserCredential userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-  //         email: _emailController.text.trim(),
-  //         password: _passController.text.trim(),
-  //       );
-  //
-  //       await FirebaseFirestore.instance.collection('users').doc(userCred.user!.uid).set({
-  //         'name': _nameController.text.trim(),
-  //         'role': selectedRole,
-  //         'email': _emailController.text.trim(),
-  //         'idNumber': _idController.text.trim(),
-  //         'regNo': selectedRole == 'ngo' ? _regController.text.trim() : '',
-  //       });
-  //       _navigateToApp(_nameController.text.trim());
-  //     } else {
-  //       UserCredential userCred = await FirebaseAuth.instance.signInWithEmailAndPassword(
-  //         email: _emailController.text.trim(),
-  //         password: _passController.text.trim(),
-  //       );
-  //
-  //       DocumentSnapshot doc = await FirebaseFirestore.instance.collection('users').doc(userCred.user!.uid).get();
-  //       _navigateToApp(doc['name'] ?? "User");
-  //     }
-  //   } catch (e) {
-  //     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-  //   } finally {
-  //     setState(() => _isLoading = false);
-  //   }
-  // }
 
   void _showError(String msg) {
     if (!mounted) return;
@@ -1479,24 +451,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
     );
   }
 
-  // Widget _roleBtn(String title, String sub, IconData icon, Color color, VoidCallback tap) {
-  //   return InkWell(
-  //     onTap: tap,
-  //     child: Container(
-  //       padding: const EdgeInsets.all(16),
-  //       decoration: BoxDecoration(color: color.withOpacity(0.05), border: Border.all(color: color.withOpacity(0.1)), borderRadius: BorderRadius.circular(20)),
-  //       child: Row(
-  //         children: [
-  //           Icon(icon, color: color),
-  //           const SizedBox(width: 16),
-  //           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.bold)), Text(sub, style: const TextStyle(fontSize: 11, color: Colors.grey))])),
-  //           Icon(LucideIcons.arrowRight, color: color, size: 18),
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
-
   Widget _roleBtn(String title, String sub, IconData icon, Color color, VoidCallback tap, {required bool isSelected}) {
     return InkWell(
       onTap: tap,
@@ -1616,8 +570,8 @@ class _AppShellState extends State<AppShell> {
 
     final List<Widget> pages = [
       DonorDashboard(userName: widget.userName),
-      const ReliefMap(),
-      const Center(child: Text("AI Advisor")),
+      ReliefMap(onTopUp: () => setState(() => _index = 0)),
+      const AiAdvisorPage(),
       const Center(child: Text("My Impact")),
     ];
 
@@ -1919,6 +873,7 @@ class DonorDashboard extends StatelessWidget {
                         .collection('users')
                         .doc(uid)
                         .collection('donations')
+                        .orderBy('timestamp', descending: true)
                         .snapshots(),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
@@ -1928,7 +883,8 @@ class DonorDashboard extends StatelessWidget {
                       return Column(
                         children: snapshot.data!.docs.map((doc) {
                           var data = doc.data() as Map<String, dynamic>;
-                          return _buildTrackingCardFromData(data);
+                          // PASS CONTEXT HERE
+                          return _buildTrackingCardFromData(context, data);
                         }).toList(),
                       );
                     }
@@ -2003,7 +959,7 @@ class DonorDashboard extends StatelessWidget {
             child: ElevatedButton.icon(
               onPressed: () => _showTopUpDialog(context, uid),
               icon: const Icon(LucideIcons.arrowUpCircle, size: 18),
-              label: const Text("Top Up Funds", style: TextStyle(fontWeight: FontWeight.w800)),
+              label: const Text("Top Up Funds to KitaCare Wallet", style: TextStyle(fontWeight: FontWeight.w800)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: kEmerald,
                 foregroundColor: Colors.white,
@@ -2118,14 +1074,16 @@ class DonorDashboard extends StatelessWidget {
     );
   }
 
-  // Visual layout matching the website card
+  // --- 1. UPDATED CARD UI: ACCEPT QR DATA & SHOW BUTTON ---
   Widget _buildTrackingCard({
     required String id,
     required String target,
     required String status,
     required bool isItem,
     required String img,
-    required List<dynamic> milestones, // Milestones are now dynamic!
+    required List<dynamic> milestones,
+    String? qrCodeData,
+    VoidCallback? onViewQr,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -2139,25 +1097,40 @@ class DonorDashboard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            // Removed MainAxisAlignment.spaceBetween to allow Expanded to work
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(color: (isItem ? kBlue : kEmerald).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                    child: Icon(isItem ? LucideIcons.package : LucideIcons.banknote, color: isItem ? kBlue : kEmerald, size: 16),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(id, style: const TextStyle(color: kSlate400, fontSize: 9, fontWeight: FontWeight.bold)),
-                      Text(target, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kSlate800)),
-                    ],
-                  )
-                ],
+              // --- 1. WRAP LEFT CONTENT IN EXPANDED ---
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                          color: (isItem ? kBlue : kEmerald).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8)
+                      ),
+                      child: Icon(isItem ? LucideIcons.package : LucideIcons.banknote, color: isItem ? kBlue : kEmerald, size: 16),
+                    ),
+                    const SizedBox(width: 12),
+                    // --- 2. WRAP TEXT COLUMN IN EXPANDED ---
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(id, style: const TextStyle(color: kSlate400, fontSize: 9, fontWeight: FontWeight.bold)),
+                          Text(
+                            target,
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kSlate800),
+                            overflow: TextOverflow.ellipsis, // <--- ADDS '...' IF TOO LONG
+                            maxLines: 1, // <--- KEEPS IT ON ONE LINE
+                          ),
+                        ],
+                      ),
+                    )
+                  ],
+                ),
               ),
+              const SizedBox(width: 8), // Gap between text and chip
               _statusChip(status, isItem ? kBlue : kEmerald),
             ],
           ),
@@ -2165,15 +1138,10 @@ class DonorDashboard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Dynamic Timeline
               Expanded(
                 child: Column(
                   children: milestones.map((m) {
-                    return _timelineItem(
-                        m['label'] ?? "Step",
-                        m['date'] ?? "",
-                        m['done'] ?? false
-                    );
+                    return _timelineItem(m['label'] ?? "Step", m['date'] ?? "", m['done'] ?? false);
                   }).toList(),
                 ),
               ),
@@ -2181,12 +1149,88 @@ class DonorDashboard extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Image.network(img, width: 100, height: 80, fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(width: 100, height: 80, color: kSlate100, child: Icon(Icons.image_not_supported)),
+                  errorBuilder: (context, error, stackTrace) => Container(width: 100, height: 80, color: kSlate100, child: const Icon(Icons.image_not_supported)),
                 ),
               )
             ],
-          )
+          ),
+
+          if (isItem && qrCodeData != null) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onViewQr,
+                icon: const Icon(LucideIcons.qrCode, size: 16),
+                label: const Text("View QR Code", style: TextStyle(fontWeight: FontWeight.bold)),
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: kSlate800,
+                    side: const BorderSide(color: kSlate300),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 12)
+                ),
+              ),
+            ),
+          ]
         ],
+      ),
+    );
+  }
+
+  // --- 3. NEW HELPER: SHOW THE QR DIALOG ---
+  void _showSavedQrDialog(BuildContext context, String qrData, String itemName) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("Item Donation QR", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: kSlate800)),
+                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x, size: 20))
+                ],
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: kSlate100, width: 2),
+                    boxShadow: [BoxShadow(color: kSlate100, blurRadius: 10)]
+                ),
+                child: Image.network(
+                  "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$qrData",
+                  width: 180,
+                  height: 180,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const SizedBox(width: 180, height: 180, child: Center(child: CircularProgressIndicator()));
+                  },
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(itemName, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: kEmerald)),
+              const SizedBox(height: 8),
+              Text("ID: $qrData", style: const TextStyle(fontWeight: FontWeight.bold, color: kSlate400, fontSize: 12)),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(backgroundColor: kEmerald, foregroundColor: Colors.white),
+                  child: const Text("Close"),
+                ),
+              )
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2221,15 +1265,20 @@ class DonorDashboard extends StatelessWidget {
     );
   }
 
-  // Data mapping from Firestore
-  Widget _buildTrackingCardFromData(Map<String, dynamic> data) {
+  Widget _buildTrackingCardFromData(BuildContext context, Map<String, dynamic> data) {
+    String id = data['id'] ?? "ID-UNKNOWN";
+    String? qrData = data['qrCodeData']; // Extract from Firebase
+    String itemName = data['itemName'] ?? "Donation Item";
+
     return _buildTrackingCard(
-      id: data['id'] ?? "ID-UNKNOWN",
+      id: id,
       target: data['target'] ?? "Aid Project",
       status: data['status'] ?? "Processing",
       isItem: data['type'] == 'item',
       img: data['imageUrl'] ?? "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=400",
-      milestones: data['milestones'] ?? [], // This maps the dynamic list from Firebase
+      milestones: data['milestones'] ?? [],
+      qrCodeData: qrData, // Pass to UI
+      onViewQr: () => _showSavedQrDialog(context, qrData ?? id, itemName), // Pass action
     );
   }
 
@@ -2514,7 +1563,9 @@ String _globalLastUpdated = "Never";
 DateTime? _lastSuccessfulFetch;
 
 class ReliefMap extends StatefulWidget {
-  const ReliefMap({super.key});
+  final VoidCallback? onTopUp;
+
+  const ReliefMap({super.key, this.onTopUp});
   @override
   State<ReliefMap> createState() => _ReliefMapState();
   }
@@ -2522,6 +1573,17 @@ class ReliefMap extends StatefulWidget {
 class _ReliefMapState extends State<ReliefMap> {
   String _selectedFilter = "All";
   final List<String> _categories = ["All", "Flood Relief", "Food Security", "Medical Aid"];
+
+  // Define your reliable images here once
+  final Map<String, String> _categoryImages = {
+    'Education': "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=400&q=80",
+    'Clothing': "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=400&q=80",
+    'Food': "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=400&q=80",
+    'Medical': "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&q=80",
+    'Disaster Relief': "https://images.pexels.com/photos/6995201/pexels-photo-6995201.jpeg?auto=compress&cs=tinysrgb&w=400", // Flood
+    'Money': "https://images.unsplash.com/photo-1593113598332-cd288d649433?w=400&q=80", // Generic
+    'Default': "https://images.unsplash.com/photo-1469571486292-0ba58a3f068b?w=400&q=80",
+  };
 
   // Behavior object
   late MapZoomPanBehavior _zoomPanBehavior;
@@ -2549,19 +1611,16 @@ class _ReliefMapState extends State<ReliefMap> {
     );
   }
 
+  // --- FIXED ZOOM FUNCTION ---
   void _safeMapMove({required MapLatLng latLng, required double zoom}) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        try {
-          // Direct update to behavior without calling setState
-          // This is how Syncfusion handles smooth animations internally
-          _zoomPanBehavior.focalLatLng = latLng;
-          _zoomPanBehavior.zoomLevel = zoom;
-        } catch (e) {
-          debugPrint("Map move ignored: Engine busy");
-        }
-      }
-    });
+    // We remove 'addPostFrameCallback' so it updates INSTANTLY.
+    // We wrap it in setState to force the Map widget to redraw immediately.
+    if (mounted) {
+      setState(() {
+        _zoomPanBehavior.focalLatLng = latLng;
+        _zoomPanBehavior.zoomLevel = zoom;
+      });
+    }
   }
 
   void _handleMarkerSelection(int index, Map<String, dynamic> data) {
@@ -2678,8 +1737,8 @@ class _ReliefMapState extends State<ReliefMap> {
       print("API KEY: ${dotenv.env['GEMINI_KEY']}");
       final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey!);
 
-      final prompt = "Search active disaster situations in Malaysia (Last 48h). Categories: Flood Relief, Food Security, Medical Aid. Return strictly RAW JSON LIST ONLY. Format: [{\"location\": \"string\", \"category\": \"string\", \"description\": \"string\", \"score\": 90, \"lat\": 4.0, \"lng\": 101.0}]";
-
+      // Inside _fetchNewDataFromAI
+      final prompt = "Search active disaster situations in Malaysia (Last 48h). Categories: Flood Relief, Food Security, Medical Aid. Return strictly RAW JSON LIST ONLY. Provide exactly 3 specific items for each category in needed_items. Format: [{\"location\": \"string\", \"category\": \"string\", \"description\": \"string\", \"score\": 90, \"lat\": 4.0, \"lng\": 101.0, \"severities\": {\"edu\": \"Medium/High/Critical\", \"cloth\": \"Medium/High/Critical\", \"food\": \"Medium/High/Critical\", \"med\": \"Medium/High/Critical\", \"rel\": \"Medium/High/Critical\"}, \"needed_items\": {\"edu\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"cloth\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"food\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"med\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"rel\": [\"Item 1\", \"Item 2\", \"Item 3\"]}}]";
       final response = await model.generateContent([Content.text(prompt)]);
       String rawJson = response.text ?? "[]";
 
@@ -3013,26 +2072,66 @@ class _ReliefMapState extends State<ReliefMap> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: isSelected ? kEmerald : kSlate100, width: isSelected ? 2.5 : 1),
-        boxShadow: isSelected ? [BoxShadow(color: kEmerald.withOpacity(0.1), blurRadius: 10)] : [],
+        border: Border.all(
+            color: isSelected ? kEmerald : kSlate100,
+            width: isSelected ? 2.5 : 1
+        ),
+        boxShadow: isSelected
+            ? [BoxShadow(color: kEmerald.withOpacity(0.1), blurRadius: 10)]
+            : [],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(item['category']?.toString().toUpperCase() ?? "GENERAL", style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: kSlate400)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                item['category']?.toString().toUpperCase() ?? "GENERAL",
+                style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: kSlate400),
+              ),
+              const Text(
+                "VERIFIED",
+                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: kEmerald),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
-          Text(item['location'] ?? "Unknown", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(item['location'] ?? "Unknown",
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
+          ),
           const SizedBox(height: 4),
-          Text(item['description'] ?? "", style: const TextStyle(color: kSlate500, fontSize: 12)),
+          Text(item['description'] ?? "",
+              style: const TextStyle(color: kSlate500, fontSize: 12)
+          ),
           const SizedBox(height: 16),
+
+          // --- FIXED BUTTON: WRAPS TEXT AND CENTERED ---
+          // --- FIXED BUTTON: FULL WIDTH BUT COMPACT HEIGHT ---
           SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => _handleMarkerSelection(index, item),
-              style: ElevatedButton.styleFrom(backgroundColor: kEmerald, foregroundColor: Colors.white),
-              child: const Text("View on Map"),
+            width: double.infinity, // Spans the entire width of the card
+            child: ElevatedButton.icon(
+              onPressed: () => _showContributeDialog(context, item),
+              icon: const Icon(LucideIcons.arrowUpRight, size: 16),
+              label: const Text(
+                "Contribute Now",
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kEmerald,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                // Adjust vertical padding to make the box "thinner"
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                // Remove the default minimum height (usually 48)
+                minimumSize: const Size(double.infinity, 32),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
             ),
           )
+          // ------------------------------------------
         ],
       ),
     );
@@ -3057,4 +2156,1434 @@ class _ReliefMapState extends State<ReliefMap> {
       _selectedLocationId = null; // Optional: clear green border on reset
     });
   }
+
+  void _showContributeDialog(BuildContext context, Map<String, dynamic> item) {
+    int step = 0; // 0: Selection, 1: Form, 2: Confirm, 3: Error, 4: Success
+    String? selectedOption;
+    String? selectedBank;
+    bool isPaying = false;
+    double currentWalletBalance = 0.0;
+    final TextEditingController amountController = TextEditingController(text: "50");
+    final String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
+
+    showDialog(
+      context: context,
+      barrierDismissible: !isPaying,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildDialogHeader(item, context),
+                  Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      children: [
+                        if (step == 0) ...[
+                          // STEP 0: SELECTION
+                          _buildContributeCard(
+                            title: "Donate Money",
+                            sub: "Secured transaction via KitaCare Wallet.",
+                            icon: LucideIcons.banknote,
+                            iconBg: const Color(0xFFD1FAE5),
+                            iconColor: kEmerald,
+                            isSelected: selectedOption == 'money',
+                            selectedBorderColor: kEmerald,
+                            selectedBgColor: kEmerald.withOpacity(0.08),
+                            onTap: () => setDialogState(() => selectedOption = 'money'),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildContributeCard(
+                            title: "Donate Items",
+                            sub: "Contribute physical goods (Books, Food, etc.)",
+                            icon: LucideIcons.package,
+                            iconBg: const Color(0xFFDBEAFE),
+                            iconColor: kBlue,
+                            isSelected: selectedOption == 'items',
+                            selectedBorderColor: kBlue,
+                            selectedBgColor: kBlue.withOpacity(0.08),
+                            onTap: () => setDialogState(() => selectedOption = 'items'),
+                          ),
+                          const SizedBox(height: 24),
+                          if (selectedOption != null)
+                            _buildStepButton(
+                              label: "Confirm Selection",
+                              color: selectedOption == 'money' ? kEmerald : kBlue,
+                              onTap: () {
+                                if (selectedOption == 'money') setDialogState(() => step = 1);
+                                else  _showItemSelectionDialog(context, item);
+                              },
+                            )
+                        ] else if (step == 1) ...[
+                          // STEP 1: FORM
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text("SELECT FUNDING SOURCE",
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 0.5)),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildBankDropdown(uid, selectedBank, (val) {
+                            setDialogState(() => selectedBank = val);
+                          }),
+                          const SizedBox(height: 20),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text("CONTRIBUTION AMOUNT (RM)",
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 0.5)),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildAmountStepper(amountController, () => setDialogState(() {})),
+                          const SizedBox(height: 24),
+                          _buildStepButton(
+                            label: "Proceed to Payment",
+                            icon: LucideIcons.arrowRight,
+                            onTap: () => setDialogState(() => step = 2),
+                          ),
+                        ] else if (step == 2) ...[
+                          // STEP 2: CONFIRM
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text("CONFIRM SECURE PAYMENT",
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 0.5)),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildStepButton(
+                            label: isPaying ? "" : "Pay RM ${amountController.text} Secured",
+                            icon: isPaying ? null : LucideIcons.lock,
+                            isLoading: isPaying,
+                            onTap: () async {
+                              // 1. DECLARE VARIABLES FIRST
+                              final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+                              double donateAmount = double.tryParse(amountController.text) ?? 0.0;
+                              bool isUsingInternalWallet = (selectedBank ?? "KitaCare Wallet") == "KitaCare Wallet";
+
+                              // 2. CHECK FUNDING (ONLY FOR INTERNAL WALLET)
+                              if (isUsingInternalWallet) {
+                                final userSnapshot = await userRef.get();
+                                currentWalletBalance = (userSnapshot.data()?['walletBalance'] ?? 0.0).toDouble();
+
+                                if (donateAmount > currentWalletBalance) {
+                                  setDialogState(() => step = 3); // Go to Error Step
+                                  return;
+                                }
+                              }
+
+                              // 3. START PAYING ANIMATION
+                              setDialogState(() => isPaying = true);
+
+                              try {
+                                // 4. CALCULATE LIVES (RM 10 = 1 Life)
+                                int calculatedLives = (donateAmount / 10).floor();
+                                if (calculatedLives < 1) calculatedLives = 1;
+
+                                String cat = item['category'] ?? "";
+                                String imageToSave = _categoryImages['Money']!; // Default
+                                if (cat.contains("Flood")) imageToSave = _categoryImages['Disaster Relief']!;
+                                else if (cat.contains("Food")) imageToSave = _categoryImages['Food']!;
+                                else if (cat.contains("Medical")) imageToSave = _categoryImages['Medical']!;
+                                else if (cat.contains("Education")) imageToSave = _categoryImages['Education']!;
+                                else if (cat.contains("Clothes")) imageToSave = _categoryImages['Clothing']!;
+                                else if (cat.contains("Shirts")) imageToSave = _categoryImages['Clothing']!;
+
+                                // 5. DATABASE UPDATES
+                                if (isUsingInternalWallet) {
+                                  await userRef.update({
+                                    'walletBalance': FieldValue.increment(-donateAmount),
+                                    'impactValue': FieldValue.increment(donateAmount),
+                                    'livesTouched': FieldValue.increment(calculatedLives),
+                                  });
+                                } else {
+                                  // External Bank: Only update Impact and Lives
+                                  await userRef.update({
+                                    'impactValue': FieldValue.increment(donateAmount),
+                                    'livesTouched': FieldValue.increment(calculatedLives),
+                                  });
+                                }
+
+                                // 6. CREATE TRACKING RECORD
+                                await userRef.collection('donations').add({
+                                  'id': "KC-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}",
+                                  'target': item['location'] ?? "Relief Project",
+                                  'status': "Processing",
+                                  'type': 'money',
+                                  'imageUrl': imageToSave,
+                                  'milestones': [
+                                    {'label': 'Payment Verified', 'date': 'Today', 'done': true},
+                                    {'label': 'NGO Allocation', 'date': 'Pending', 'done': false},
+                                    {'label': 'Final Disbursement', 'date': '', 'done': false},
+                                  ],
+                                  'timestamp': FieldValue.serverTimestamp(),
+                                });
+
+                                if (context.mounted) {
+                                  setDialogState(() {
+                                    isPaying = false;
+                                    step = 4; // Move to Success Step
+                                  });
+                                }
+                              } catch (e) {
+                                debugPrint("Payment Error: $e");
+                                setDialogState(() => isPaying = false);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text("Payment failed. Please try again."))
+                                );
+                              }
+                            },
+                          ),
+                        ] else if (step == 3) ...[
+                          // STEP 3: ERROR
+                          const Icon(LucideIcons.alertTriangle, color: Colors.redAccent, size: 48),
+                          const SizedBox(height: 16),
+                          const Text("Insufficient Funding",
+                              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: kSlate800)),
+                          const SizedBox(height: 8),
+                          const Text("Your balance is too low for this transaction.", textAlign: TextAlign.center, style: TextStyle(color: kSlate500, fontSize: 13)),
+                          const SizedBox(height: 20),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(color: kSlate50, borderRadius: BorderRadius.circular(16)),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text("Wallet Balance:", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                                Text("RM ${currentWalletBalance.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.redAccent)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          _buildStepButton(
+                            label: "Top Up Wallet",
+                            icon: LucideIcons.plusCircle,
+                            onTap: () {
+                              Navigator.pop(context);
+                              if (widget.onTopUp != null) widget.onTopUp!();
+                            },
+                          ),
+                        ] else if (step == 4) ...[
+                          // STEP 4: INTEGRATED SUCCESS UI
+                          const Icon(LucideIcons.checkCircle, color: kEmerald, size: 64),
+                          const SizedBox(height: 16),
+                          const Text("Contribution Successful!",
+                              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: kSlate800)),
+                          const SizedBox(height: 8),
+                          const Text("Thank you for your kindness. Your support will make a real impact.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: kSlate500, fontSize: 13)),
+                          const SizedBox(height: 24),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(color: kEmerald.withOpacity(0.05), borderRadius: BorderRadius.circular(16)),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text("Amount Transferred:", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                                Text("RM ${amountController.text}.00",
+                                    style: const TextStyle(fontWeight: FontWeight.w900, color: kEmerald)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          _buildStepButton(
+                            label: "Return to Map",
+                            onTap: () => Navigator.pop(context),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Replace your existing _showItemSelectionDialog
+  void _showItemSelectionDialog(BuildContext context, Map<String, dynamic> item) {
+    final Map<String, dynamic> sev = item['severities'] ?? {};
+    final Map<String, dynamic> itemsList = item['needed_items'] ?? {};
+
+    // Track selection locally (Captured by the StatefulBuilder)
+    String selectedCategory = "";
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        // STATEFUL BUILDER IS KEY HERE
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildDialogHeader(item, context),
+                  Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      children: [
+                        // --- ROW 1: Education & Clothing ---
+                        Row(
+                          children: [
+                            _buildItemCategoryCard(
+                              "Education",
+                              LucideIcons.book,
+                              sev['edu'] ?? "abc",
+                                  () {
+                                setDialogState(() => selectedCategory = "Education");
+                                Future.delayed(const Duration(milliseconds: 150), () {
+                                  _showCategoryItemSelection(context, item, "EDUCATION",
+                                      List<String>.from(itemsList['edu'] ?? ["Books"]),
+                                      "Education"); // <--- ADD THIS PARAMETER
+                                });
+                              },
+                              isSelected: selectedCategory == "Education",
+                            ),
+                            const SizedBox(width: 12),
+                            _buildItemCategoryCard(
+                              "Clothing",
+                              LucideIcons.shirt,
+                              sev['cloth'] ?? "abc",
+                                  () {
+                                setDialogState(() => selectedCategory = "Clothing");
+                                Future.delayed(const Duration(milliseconds: 150), () {
+                                  _showCategoryItemSelection(context, item, "CLOTHING", List<String>.from(itemsList['cloth'] ?? ["Clothes"]), "Clothing");
+                                });
+                              },
+                              isSelected: selectedCategory == "Clothing",
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // --- ROW 2: Food & Medical ---
+                        Row(
+                          children: [
+                            _buildItemCategoryCard(
+                              "Food",
+                              LucideIcons.shoppingBag,
+                              sev['food'] ?? "abc",
+                                  () {
+                                setDialogState(() => selectedCategory = "Food");
+                                Future.delayed(const Duration(milliseconds: 150), () {
+                                  _showCategoryItemSelection(context, item, "FOOD", List<String>.from(itemsList['food'] ?? ["Rice"]), "Food");
+                                });
+                              },
+                              isSelected: selectedCategory == "Food",
+                            ),
+                            const SizedBox(width: 12),
+                            _buildItemCategoryCard(
+                              "Medical",
+                              LucideIcons.stethoscope,
+                              sev['med'] ?? "abc",
+                                  () {
+                                setDialogState(() => selectedCategory = "Medical");
+                                Future.delayed(const Duration(milliseconds: 150), () {
+                                  _showCategoryItemSelection(context, item, "MEDICAL", List<String>.from(itemsList['med'] ?? ["Meds"]), "Medical");
+                                });
+                              },
+                              isSelected: selectedCategory == "Medical",
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // --- ROW 3: Disaster Relief ---
+                        Row(
+                          children: [
+                            _buildItemCategoryCard(
+                              "Disaster Relief",
+                              LucideIcons.cloudLightning,
+                              sev['rel'] ?? "abc", // 'rel' matches your AI JSON key
+                                  () {
+                                setDialogState(() => selectedCategory = "Disaster Relief");
+                                Future.delayed(const Duration(milliseconds: 150), () {
+                                  _showCategoryItemSelection(context, item, "DISASTER RELIEF", List<String>.from(itemsList['rel'] ?? ["Tents", "Flashlights"]), "Disaster Relief");
+                                });
+                              },
+                              isSelected: selectedCategory == "Disaster Relief",
+                            ),
+                            const SizedBox(width: 12),
+                            // Empty Expanded widget to keep the layout grid balanced (2 columns)
+                            const Expanded(child: SizedBox()),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showCategoryItemSelection(BuildContext context, Map<String, dynamic> item, String categoryTitle, List<String> items, String categoryKey) {
+    String? selectedItem;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return Dialog(
+                insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+                backgroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildDialogHeader(item, context),
+                    Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("SELECT ITEM IN $categoryTitle",
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 0.5)),
+                          const SizedBox(height: 16),
+
+                          // ITEM LIST
+                          ...items.map((itemName) {
+                            bool isSelected = selectedItem == itemName;
+                            return GestureDetector(
+                              onTap: () => setDialogState(() => selectedItem = itemName),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                width: double.infinity,
+                                margin: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                                decoration: BoxDecoration(
+                                    color: isSelected ? kEmerald.withOpacity(0.08) : const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: isSelected ? kEmerald : Colors.transparent, width: 2)
+                                ),
+                                child: Row(
+                                  children: [
+                                    Text(itemName, style: TextStyle(fontWeight: FontWeight.w700, color: isSelected ? kEmerald : kSlate800)),
+                                    const Spacer(),
+                                    if(isSelected) const Icon(LucideIcons.checkCircle2, color: kEmerald, size: 18)
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+
+                          const SizedBox(height: 12),
+
+                          // MATCH BUTTON
+                          _buildStepButton(
+                            label: "Match with NGO",
+                            icon: LucideIcons.zap,
+                            color: selectedItem != null ? kEmerald : kSlate300,
+                            onTap: () {
+                              if (selectedItem != null) {
+                                Navigator.pop(context); // Close selection dialog
+                                // OPEN THE NEW AI MATCHING PROCESS
+                                _showMatchProcessDialog(context, item, selectedItem!, categoryKey);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              );
+            }
+        );
+      },
+    );
+  }
+
+  void _showMatchProcessDialog(BuildContext context, Map<String, dynamic> locationData, String selectedItem, String categoryKey) {
+    // State 0: Loading/Simulate
+    // State 1: Match Found (Show Details)
+    // State 2: QR Code Display (NEW!)
+    int state = 0;
+    bool isSaving = false;
+    String? generatedQrData; // To hold the ID we generate
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Keep Header Consistent
+                  _buildDialogHeader(locationData, context),
+
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: state == 0
+                    // --- STATE 0: SIMULATION LOADING ---
+                        ? Column(
+                      children: [
+                        const SizedBox(height: 20),
+                        const SizedBox(
+                          width: 60, height: 60,
+                          child: CircularProgressIndicator(color: kEmerald, strokeWidth: 5),
+                        ),
+                        const SizedBox(height: 24),
+                        Text("AI is finding local needs...",
+                            style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: kSlate500)),
+                        const SizedBox(height: 24),
+                        TextButton(
+                          onPressed: () async {
+                            await Future.delayed(const Duration(milliseconds: 800));
+                            setState(() => state = 1);
+                          },
+                          child: const Text("Click to simulate match",
+                              style: TextStyle(color: kEmerald, fontWeight: FontWeight.bold)),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                    )
+                        : state == 1
+                    // --- STATE 1: MATCH FOUND DETAILS ---
+                        ? Column(
+                      children: [
+                        // 1. Green Success Box
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: kEmerald.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: kEmerald.withOpacity(0.2)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(LucideIcons.zap, color: kEmerald, size: 24),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: RichText(
+                                  text: TextSpan(
+                                      style: GoogleFonts.inter(color: kSlate800, fontSize: 13, height: 1.4),
+                                      children: [
+                                        const TextSpan(text: "AI Match Found! ", style: TextStyle(fontWeight: FontWeight.w900, color: kEmerald)),
+                                        const TextSpan(text: "Your contribution for "),
+                                        TextSpan(text: selectedItem, style: const TextStyle(fontWeight: FontWeight.w800)),
+                                        const TextSpan(text: " is critical for the "),
+                                        TextSpan(text: "${locationData['location']} ", style: const TextStyle(fontWeight: FontWeight.w800)),
+                                        const TextSpan(text: "zone."),
+                                      ]
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // 2. Drop-off Location Card
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: kSlate50,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: kSlate100),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text("RECOMMENDED DROP-OFF", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 0.5)),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  const Icon(LucideIcons.mapPin, color: kBlue, size: 24),
+                                  const SizedBox(width: 12),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text("MERCY Malaysia HQ", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: kSlate800)),
+                                      Text("Kuala Lumpur City Centre", style: GoogleFonts.inter(color: kSlate500, fontSize: 12)),
+                                    ],
+                                  )
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              const Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text("Hours: 9AM - 5PM", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: kSlate500)),
+                                  Text("Condition: New/Gently Used", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: kSlate500)),
+                                ],
+                              )
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // 3. Confirm Button (Saves to Firebase)
+                        _buildStepButton(
+                          label: "Confirm & Get QR",
+                          icon: LucideIcons.qrCode,
+                          isLoading: isSaving,
+                          onTap: () async {
+                            setState(() => isSaving = true);
+
+                            // --- FIX: SELECT IMAGE BASED ON THE CATEGORY MAP ---
+                            String finalImage = _categoryImages[categoryKey] ?? _categoryImages['Default']!;
+
+                            // Save to Firebase and get the unique ID back
+                            String qrCode = await _saveItemDonationToFirebase(locationData, selectedItem, finalImage);
+
+                            if (context.mounted) {
+                              setState(() {
+                                isSaving = false;
+                                generatedQrData = qrCode; // Save the ID to display
+                                state = 2; // MOVE TO STATE 2 (QR DISPLAY)
+                              });
+                            }
+                          },
+                        ),
+                      ],
+                    )
+                    // --- STATE 2: QR CODE DISPLAY (NEW!) ---
+                        : Column(
+                      children: [
+                        const Text("DONATION REGISTERED", style: TextStyle(fontWeight: FontWeight.w900, color: kEmerald, letterSpacing: 1.0, fontSize: 12)),
+                        const SizedBox(height: 20),
+
+                        // THE QR CODE IMAGE
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: kSlate100, width: 2),
+                              boxShadow: [BoxShadow(color: kSlate100, blurRadius: 10)]
+                          ),
+                          // Uses a public API to generate QR code from the string
+                          child: Image.network(
+                            "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$generatedQrData",
+                            width: 150,
+                            height: 150,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return const SizedBox(width: 150, height: 150, child: Center(child: CircularProgressIndicator()));
+                            },
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+                        Text(generatedQrData ?? "ERROR", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kSlate800)),
+                        const Text("Show this to the NGO officer.", style: TextStyle(color: kSlate500, fontSize: 12)),
+                        const SizedBox(height: 24),
+
+                        // DONE BUTTON
+                        _buildStepButton(
+                          label: "Save to Dashboard",
+                          icon: LucideIcons.download,
+                          onTap: () {
+                            Navigator.pop(context); // Close Dialog
+                            _showSuccessAlert(context);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ==========================================
+  // HELPER: SAVE TO FIREBASE (Returns the QR String)
+  // ==========================================
+  Future<String> _saveItemDonationToFirebase(Map<String, dynamic> locationData, String item, String imageUrl) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return "ERROR";
+
+    // 1. Generate unique QR Data
+    String uniqueId = "KC-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}";
+    String qrString = "$uniqueId-${item.substring(0,3).toUpperCase()}";
+
+    // 2. Add to Firebase
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('donations')
+        .add({
+      'id': uniqueId,
+      'target': locationData['location'] ?? "Unknown Zone",
+      'status': "Pending Drop-off",
+      'type': 'item',
+      'itemName': item,
+      'imageUrl': imageUrl, // Saved here!
+      'qrCodeData': qrString, // STORED IN FIREBASE
+      'milestones': [
+        {'label': 'Pledge Confirmed', 'date': 'Today', 'done': true},
+        {'label': 'Drop-off Verified', 'date': '', 'done': false},
+        {'label': 'Distributed', 'date': '', 'done': false},
+      ],
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    return qrString; // Return the string so we can generate the image
+  }
+
+// --- HELPER FOR THE ITEM CARDS ---
+  // Replace your existing _buildItemCategoryCard with this updated version
+  Widget _buildItemCategoryCard(
+      String title,
+      IconData icon,
+      String urgency,
+      VoidCallback onTap,
+      {bool isSelected = false} // Added parameter
+      ) {
+    // Color logic...
+    Color bgColor;
+    Color textColor;
+
+    switch (urgency.toLowerCase()) {
+      case 'critical':
+        bgColor = const Color(0xFFFEE2E2);
+        textColor = const Color(0xFF991B1B);
+        break;
+      case 'high':
+        bgColor = const Color(0xFFFFEDD5);
+        textColor = const Color(0xFF9A3412);
+        break;
+      case 'medium':
+        bgColor = const Color(0xFFD1FAE5);
+        textColor = const Color(0xFF065F46);
+        break;
+      default:
+        bgColor = kSlate100;
+        textColor = kSlate500;
+    }
+
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: AnimatedContainer( // Changed to AnimatedContainer for smooth transition
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          decoration: BoxDecoration(
+            // Logic: If selected, Emerald background tint + Emerald Border
+            color: isSelected ? kEmerald.withOpacity(0.05) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              // Logic: Green border if selected, invisible/grey if not
+              color: isSelected ? kEmerald : const Color(0xFFF1F5F9),
+              width: isSelected ? 2.5 : 1, // Thicker border when selected
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: kEmerald, size: 32),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    color: isSelected ? kEmerald : kSlate800 // Text turns green too
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  urgency.toUpperCase(),
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- PROFESSIONAL ERROR HELPER ---
+  void _showFundingError(BuildContext context, double currentBalance) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Row(
+          children: [
+            Icon(LucideIcons.alertCircle, color: Colors.redAccent, size: 24),
+            SizedBox(width: 12),
+            Text("Insufficient Funding", style: TextStyle(fontWeight: FontWeight.w800)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Your KitaCare Wallet balance is insufficient to complete this transaction.",
+                style: TextStyle(color: kSlate500, fontSize: 14)),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: kSlate50, borderRadius: BorderRadius.circular(12)),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("Current Balance:", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text("RM ${currentBalance.toStringAsFixed(2)}",
+                      style: const TextStyle(fontWeight: FontWeight.w900, color: kSlate800)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel", style: TextStyle(color: kSlate400, fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kEmerald,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              Navigator.pop(context);
+              // Option to direct user to Dashboard/Top Up
+            },
+            child: const Text("Top Up Wallet"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- NEW UI HELPERS ---
+
+  Widget _buildBankDropdown(String uid, String? currentVal, Function(String?) onChanged) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(uid).collection('wallet').snapshots(),
+      builder: (context, snapshot) {
+        List<String> items = ["KitaCare Wallet"]; // Default first option
+        if (snapshot.hasData) {
+          for (var doc in snapshot.data!.docs) {
+            items.add(doc['bankName'] ?? "Unknown Bank");
+          }
+        }
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(16)),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: currentVal ?? items.first,
+              isExpanded: true,
+              icon: const Icon(LucideIcons.chevronDown, size: 16, color: kSlate400),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: kSlate800),
+              items: items.map((String value) {
+                return DropdownMenuItem<String>(value: value, child: Text(value));
+              }).toList(),
+              onChanged: onChanged,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAmountStepper(TextEditingController ctrl, VoidCallback onUpdate) {
+    void adjust(int offset) {
+      int current = int.tryParse(ctrl.text) ?? 0;
+      int next = (current + offset).clamp(1, 10000);
+      ctrl.text = next.toString();
+      onUpdate();
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(20),
+        // THE FIX: Emerald border from your image
+        border: Border.all(color: kEmerald, width: 1.5),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 24), // Spacer to balance the arrows on the right
+          Expanded(
+            child: TextField(
+              controller: ctrl,
+              textAlign: TextAlign.center,
+              keyboardType: TextInputType.number,
+              onChanged: (v) => onUpdate(),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: kSlate800),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+          // THE FIX: Vertical arrows on the right side
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () => adjust(1), // Increase by 10
+                child: const Icon(LucideIcons.chevronUp, size: 14, color: kSlate400),
+              ),
+              const SizedBox(height: 4),
+              GestureDetector(
+                onTap: () => adjust(-1), // Decrease by 10
+                child: const Icon(LucideIcons.chevronDown, size: 14, color: kSlate400),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDialogHeader(Map<String, dynamic> item, BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: const BoxDecoration(
+        color: kEmerald,
+        borderRadius: BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("Contribute to ${item['location'] ?? 'Location'}",
+                    style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+                const Text("MERCY MALAYSIA",
+                    style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
+              ],
+            ),
+          ),
+          IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x, color: Colors.white, size: 20))
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepButton({required String label, IconData? icon, Color color = kEmerald, required VoidCallback onTap, bool isLoading = false}) {
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
+        onPressed: isLoading ? null : onTap,
+        child: isLoading
+            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
+            : Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            if (icon != null) ...[const SizedBox(width: 10), Icon(icon, size: 20)],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // UPDATED: SUCCESS ALERT (CLOSES ALL DIALOGS)
+  // ==========================================
+  void _showSuccessAlert(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Prevent clicking outside to close
+      builder: (context) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 1. Success Icon
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: kEmerald.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(LucideIcons.check, color: kEmerald, size: 40),
+              ),
+              const SizedBox(height: 24),
+
+              // 2. Title
+              Text(
+                "Contribution Successful!",
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: kSlate800,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // 3. Subtitle
+              const Text(
+                "Thank you for your kindness. Your support is now recorded in the KitaCare ecosystem.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: kSlate500,
+                  fontSize: 14,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // 4. Action Button
+              _buildStepButton(
+                label: "Return to Map",
+                // --- THE FIX IS HERE ---
+                // This command closes ALL open dialogs until it hits the main screen
+                onTap: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                // -----------------------
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContributeCard({
+    required String title,
+    required String sub,
+    required IconData icon,
+    required Color iconBg,
+    required Color iconColor,
+    required bool isSelected,
+    required Color selectedBorderColor,
+    required Color selectedBgColor, // Signature fix
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          // Logic: Shade color when selected, else standard off-white
+          color: isSelected ? selectedBgColor : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? selectedBorderColor : Colors.transparent,
+            width: 2.5,
+          ),
+          boxShadow: isSelected ? [
+            BoxShadow(
+              color: selectedBorderColor.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+          ] : [],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: iconColor, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      color: isSelected ? selectedBorderColor : kSlate800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(sub,
+                    style: TextStyle(
+                      color: isSelected ? selectedBorderColor.withOpacity(0.7) : kSlate500,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
 }
+
+// ==========================================
+// 5. AI ADVISOR PAGE (WEB STYLE MATCH)
+// ==========================================
+class AiAdvisorPage extends StatefulWidget {
+  const AiAdvisorPage({super.key});
+
+  @override
+  State<AiAdvisorPage> createState() => _AiAdvisorPageState();
+}
+
+class _AiAdvisorPageState extends State<AiAdvisorPage> {
+  final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  bool _isLoading = false;
+
+  // Initial Chat History matching your screenshot
+  final List<Map<String, dynamic>> _messages = [
+    {
+      "role": "ai",
+      "text": "Selamat Sejahtera! I am KitaCare AI. I can help you find verified NGOs, manage your donation wallet, or find the nearest drop-off point for physical items. What would you like to know?"
+    }
+  ];
+
+  Future<void> _sendMessage() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+
+    // 1. Add User Message
+    setState(() {
+      _messages.add({"role": "user", "text": text});
+      _isLoading = true;
+    });
+    _controller.clear();
+    _scrollToBottom();
+
+    try {
+      // 2. Call Gemini AI
+      final apiKey = dotenv.env['GEMINI_ADVISOR_KEY'];
+      print("API KEY: ${dotenv.env['GEMINI_ADVISOR_KEY']}");
+      if (apiKey == null) throw "API Key not found";
+
+      final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey);
+
+      // Context for the AI to act as KitaCare Advisor
+      final prompt = """
+      You are KitaCare AI, an expert humanitarian advisor for a Malaysian disaster relief app.
+      Your tone is professional, empathetic, and distinctively Malaysian (use 'Selamat Sejahtera', 'Rakyat', etc. occasionally).
+      
+      Key features you know about:
+      1. Verified NGOs (ROS/SSM registered).
+      2. KitaCare Wallet (Secure donations).
+      3. Relief Map (Real-time disaster tracking).
+      4. Item Donations (Physical goods drop-off).
+      
+      Answer the user's question briefly and helpfully.
+      User: $text
+      """;
+
+      final response = await model.generateContent([Content.text(prompt)]);
+
+      // 3. Add AI Response
+      setState(() {
+        _messages.add({
+          "role": "ai",
+          "text": response.text?.replaceAll('*', '') ?? "I apologize, I couldn't process that request."
+        });
+        _isLoading = false;
+      });
+      _scrollToBottom();
+
+    } catch (e) {
+      setState(() {
+        _messages.add({"role": "ai", "text": "Sorry, I am having trouble connecting to the server. Please try again."});
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFFF8FAFC), // Light background like web
+      child: Column(
+        children: [
+          // --- HEADER CARD (Matching Screenshot) ---
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                )
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: kEmerald,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(LucideIcons.messageSquare, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 16),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "KitaCare DONOR AI",
+                      style: GoogleFonts.inter(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: kSlate800,
+                      ),
+                    ),
+                    const Text(
+                      "EXPERT ADVISOR",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: kEmerald,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ],
+                )
+              ],
+            ),
+          ),
+
+          // --- CHAT AREA ---
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: _messages.length + (_isLoading ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index == _messages.length) {
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(16),
+                          topRight: Radius.circular(16),
+                          bottomLeft: Radius.zero,
+                          bottomRight: Radius.circular(16),
+                        ),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: const PulsingLoadingText(),
+                    ),
+                  );
+                }
+
+                final msg = _messages[index];
+                final isAi = msg['role'] == 'ai';
+
+                return Align(
+                  alignment: isAi ? Alignment.centerLeft : Alignment.centerRight,
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(20),
+                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
+                    decoration: BoxDecoration(
+                      color: isAi ? Colors.white : kEmerald,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(16),
+                        topRight: const Radius.circular(16),
+                        bottomLeft: isAi ? Radius.zero : const Radius.circular(16),
+                        bottomRight: isAi ? const Radius.circular(16) : Radius.zero,
+                      ),
+                      border: isAi ? Border.all(color: const Color(0xFFE2E8F0)) : null,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.03),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        )
+                      ],
+                    ),
+                    child: Text(
+                      msg['text'],
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        height: 1.5,
+                        color: isAi ? kSlate800 : Colors.white,
+                        fontWeight: isAi ? FontWeight.w400 : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          // --- INPUT AREA (Matching Screenshot) ---
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: kSlate100)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    onSubmitted: (_) => _sendMessage(),
+                    style: const TextStyle(fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: "Ask about donation points or tax certificates...",
+                      hintStyle: const TextStyle(color: kSlate400, fontSize: 13),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: kEmerald),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                GestureDetector(
+                  onTap: _sendMessage,
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: kEmerald,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(LucideIcons.send, color: Colors.white, size: 20),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// CUSTOM ANIMATED LOADING TEXT (AI ADVISOR)
+// ==========================================
+class PulsingLoadingText extends StatefulWidget {
+  const PulsingLoadingText({super.key});
+  @override
+  State<PulsingLoadingText> createState() => _PulsingLoadingTextState();
+}
+
+class _PulsingLoadingTextState extends State<PulsingLoadingText> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+      lowerBound: 0.4,
+      upperBound: 1.0,
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _controller,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        // THIS IS THE FIXED LINE: It now has and a Text widget
+        children: const [
+          Icon(Icons.auto_awesome, color: Colors.green, size: 16),
+          SizedBox(width: 8),
+          Text(
+            "Consulting KitaCare Knowledge...",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
