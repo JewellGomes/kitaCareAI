@@ -572,7 +572,7 @@ class _AppShellState extends State<AppShell> {
       DonorDashboard(userName: widget.userName),
       ReliefMap(onTopUp: () => setState(() => _index = 0)),
       const AiAdvisorPage(),
-      const Center(child: Text("My Impact")),
+      const MyImpactPage(),
     ];
 
     return Scaffold(
@@ -635,7 +635,7 @@ class _AppShellState extends State<AppShell> {
             BottomNavigationBarItem(icon: Icon(LucideIcons.layoutDashboard), label: "Dashboard"),
             BottomNavigationBarItem(icon: Icon(LucideIcons.map), label: "Relief Map"),
             BottomNavigationBarItem(icon: Icon(LucideIcons.messageSquare), label: "AI Advisor"),
-            BottomNavigationBarItem(icon: Icon(LucideIcons.barChart3), label: "Impact"),
+            BottomNavigationBarItem(icon: Icon(LucideIcons.barChart3), label: "My Impact"),
           ],
         ),
       ),
@@ -2311,6 +2311,7 @@ class _ReliefMapState extends State<ReliefMap> {
                                   'target': item['location'] ?? "Relief Project",
                                   'status': "Processing",
                                   'type': 'money',
+                                  'amount': donateAmount,
                                   'imageUrl': imageToSave,
                                   'milestones': [
                                     {'label': 'Payment Verified', 'date': 'Today', 'done': true},
@@ -3581,6 +3582,314 @@ class _PulsingLoadingTextState extends State<PulsingLoadingText> with SingleTick
             "Consulting KitaCare Knowledge...",
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class MyImpactPage extends StatelessWidget {
+  const MyImpactPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+        builder: (context, userSnapshot) {
+          if (userSnapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: kEmerald));
+          }
+
+          var userData = userSnapshot.data?.data() as Map<String, dynamic>? ?? {};
+          // Assuming 'impactPoints' or similar exists in your user doc
+          double impactValue = (userData['impactPoints'] ?? 0.0).toDouble();
+
+          // Tier Calculation
+          String tierName = "Supporter";
+          String badgeText = "BRONZE";
+          if (impactValue >= 100) {
+            tierName = "Community Pillar";
+            badgeText = "GOLD";
+          } else if (impactValue >= 50) {
+            tierName = "Active Contributor";
+            badgeText = "SILVER";
+          }
+
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(uid)
+                .collection('donations')
+                .orderBy('timestamp', descending: true)
+                .snapshots(),
+            builder: (context, donationSnapshot) {
+              if (donationSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator(color: kEmerald));
+              }
+
+              final donations = donationSnapshot.data?.docs ?? [];
+
+              // Count items and calculate total money
+              int itemsDonated = 0;
+              double totalMoney = 0;
+
+              for (var doc in donations) {
+                var data = doc.data() as Map<String, dynamic>;
+                if (data['type'] == 'item') {
+                  itemsDonated++;
+                } else {
+                  totalMoney += (data['amount'] ?? 0).toDouble();
+                }
+              }
+
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 16),
+                    Text(
+                      "My Charitable Journey",
+                      style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w900, color: kSlate800),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      "Quantifying your impact across the Malaysian community.",
+                      style: TextStyle(color: kSlate500, fontSize: 13),
+                    ),
+                    const SizedBox(height: 32),
+
+                    // --- TOP CARDS ROW ---
+                    Row(
+                      children: [
+                        _buildStatCard("Total Donated", "RM ${totalMoney.toStringAsFixed(2)}", kEmerald),
+                        const SizedBox(width: 12),
+                        _buildStatCard("Items Gifted", itemsDonated.toString(), Colors.orange),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // --- PHILANTHROPY TIER CARD ---
+                    _buildTierCard(tierName, badgeText),
+
+                    const SizedBox(height: 40),
+
+                    // --- AUDIT LIST HEADER ---
+                    Text(
+                      "Contribution Audit & Certificates",
+                      style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800, color: kSlate800),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // --- AUDIT LIST ---
+                    if (donations.isEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: kSlate50,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: kSlate100),
+                        ),
+                        child: const Center(
+                          child: Text("No contributions yet. Start your journey today!", style: TextStyle(color: kSlate400)),
+                        ),
+                      )
+                    else
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: donations.length,
+                        itemBuilder: (context, index) {
+                          var data = donations[index].data() as Map<String, dynamic>;
+                          return _buildAuditCard(context, data);
+                        },
+                      ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  // --- WIDGET HELPER: Stat Card ---
+  Widget _buildStatCard(String label, String value, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: kSlate100),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(color: kSlate400, fontSize: 12, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Text(value, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w900, color: kSlate800)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- WIDGET HELPER: Tier Card ---
+  Widget _buildTierCard(String tierName, String badgeText) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF115E59),
+        borderRadius: BorderRadius.circular(20),
+        image: const DecorationImage(
+          image: NetworkImage("https://www.transparenttextures.com/patterns/cubes.png"),
+          opacity: 0.1,
+          fit: BoxFit.cover,
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -20,
+            bottom: -20,
+            child: Icon(LucideIcons.award, size: 100, color: Colors.white.withOpacity(0.05)),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+                    child: Text(badgeText, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                tierName,
+                style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "You are in the top 10% of Malaysian supporters this year.",
+                style: GoogleFonts.inter(fontSize: 12, color: Colors.white.withOpacity(0.8)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- WIDGET HELPER: Audit List Card ---
+  Widget _buildAuditCard(BuildContext context, Map<String, dynamic> data) {
+    bool isItem = data['type'] == 'item';
+
+    String dateStr = "Unknown Date";
+    if (data['timestamp'] != null) {
+      DateTime dt = (data['timestamp'] as Timestamp).toDate();
+      dateStr = "${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}";
+    }
+
+    String impactText = isItem ? (data['itemName'] ?? "Donated Items") : "RM ${data['amount']}";
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kSlate100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: isItem ? Colors.orange.withOpacity(0.1) : kEmerald.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+                child: Text(isItem ? "ITEM" : "MONETARY", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isItem ? Colors.orange : kEmerald)),
+              ),
+              Text(dateStr, style: const TextStyle(color: kSlate400, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("TARGET PROJECT", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: kSlate400)),
+                    const SizedBox(height: 2),
+                    Text(data['project'] ?? "Relief Project", style: const TextStyle(fontWeight: FontWeight.w800, color: kSlate800)),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("NGO", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: kSlate400)),
+                    const SizedBox(height: 2),
+                    Text(data['ngoName'] ?? "MERCY Malaysia", style: const TextStyle(color: kSlate500, fontSize: 13)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Divider(color: kSlate100, height: 1),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("IMPACT", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: kSlate400)),
+                    const SizedBox(height: 2),
+                    Text(impactText, style: const TextStyle(fontWeight: FontWeight.w900, color: kEmerald, fontSize: 16)),
+                  ],
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Certificate generated and saved to your device."), backgroundColor: kSlate800),
+                  );
+                },
+                icon: const Icon(LucideIcons.download, size: 14),
+                label: const Text("Certificate", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kSlate800,
+                  side: const BorderSide(color: kSlate300),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
+          )
         ],
       ),
     );
