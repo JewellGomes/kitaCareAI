@@ -13,7 +13,19 @@ import 'firebase_options.dart';
 import 'package:syncfusion_flutter_maps/maps.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-
+import 'dart:io';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw; // Use 'pw' prefix to avoid conflict with Flutter's widgets
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart'; // Add this
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_filex/open_filex.dart'; // Use open_filex
+import 'package:pdf/widgets.dart' as pw;
 
 // ==========================================
 // 1. CONFIG & THEME
@@ -527,6 +539,13 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _index = 0;
+  final ScrollController _dashboardScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _dashboardScrollController.dispose();
+    super.dispose();
+  }
 
   // CUSTOM LOGO WIDGET (Matching your image)
   Widget _buildBrandLogo() {
@@ -569,8 +588,31 @@ class _AppShellState extends State<AppShell> {
     final themeColor = widget.role == 'ngo' ? kBlue : kEmerald;
 
     final List<Widget> pages = [
-      DonorDashboard(userName: widget.userName),
-      ReliefMap(onTopUp: () => setState(() => _index = 0)),
+      // 1. PASS THE CONTROLLER HERE
+      DonorDashboard(
+        userName: widget.userName,
+        scrollController: _dashboardScrollController,
+      ),
+
+      // 2. UPDATE THE onTopUp FUNCTION
+      ReliefMap(
+        onTopUp: () {
+          // Switch to the Dashboard tab (index 0)
+          setState(() => _index = 0);
+
+          // Wait 300ms for the Dashboard to build, then scroll to the bottom
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (_dashboardScrollController.hasClients) {
+              _dashboardScrollController.animateTo(
+                _dashboardScrollController.position.maxScrollExtent,
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.easeOut,
+              );
+            }
+          });
+        },
+      ),
+
       const AiAdvisorPage(),
       const MyImpactPage(),
     ];
@@ -817,7 +859,8 @@ class ProfileScreen extends StatelessWidget {
 // ==========================================
 class DonorDashboard extends StatelessWidget {
   final String userName;
-  const DonorDashboard({super.key, required this.userName});
+  final ScrollController? scrollController;
+  const DonorDashboard({super.key, required this.userName, this.scrollController});
 
   @override
   Widget build(BuildContext context) {
@@ -829,11 +872,16 @@ class DonorDashboard extends StatelessWidget {
           var userData = userSnapshot.data?.data() as Map<String, dynamic>?;
 
           // DYNAMIC FIELDS FROM FIREBASE
-          String impact = userData?['impactValue']?.toString() ?? "0.00";
+         // String impact = userData?['impactValue']?.toString() ?? "0.00";
+          double impactScore = (userData?['impactValue'] as num? ?? 0.0).toDouble();
+
+// For the UI Display (needs a 2-decimal string)
+          String impact = impactScore.toStringAsFixed(2);
           String lives = userData?['livesTouched']?.toString() ?? "0";
           double balance = (userData?['walletBalance'] ?? 0.0).toDouble(); // NEW: BALANCE FIELD
 
           return SingleChildScrollView(
+            controller: scrollController,
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -976,52 +1024,224 @@ class DonorDashboard extends StatelessWidget {
     );
   }
 
-  // NEW: FUNCTION TO ADD MONEY TO THE WALLET
+  // // NEW: FUNCTION TO ADD MONEY TO THE WALLET
+  // void _showTopUpDialog(BuildContext context, String uid) {
+  //   final TextEditingController amountController = TextEditingController();
+  //
+  //   showDialog(
+  //     context: context,
+  //     builder: (context) => AlertDialog(
+  //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+  //       title: const Text("Top Up Wallet", style: TextStyle(fontWeight: FontWeight.w800)),
+  //       content: Column(
+  //         mainAxisSize: MainAxisSize.min,
+  //         children: [
+  //           const Text("Enter amount to transfer from your linked bank account.", style: TextStyle(fontSize: 12, color: kSlate500)),
+  //           const SizedBox(height: 20),
+  //           TextField(
+  //             controller: amountController,
+  //             keyboardType: TextInputType.number,
+  //             autofocus: true,
+  //             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kEmerald),
+  //             decoration: InputDecoration(
+  //               prefixText: "RM ",
+  //               hintText: "0.00",
+  //               filled: true,
+  //               fillColor: kSlate50,
+  //               border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+  //             ),
+  //           ),
+  //         ],
+  //       ),
+  //       actions: [
+  //         TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+  //         ElevatedButton(
+  //           onPressed: () async {
+  //             double amount = double.tryParse(amountController.text) ?? 0.0;
+  //             if (amount > 0) {
+  //               // UPDATE FIREBASE BALANCE
+  //               await FirebaseFirestore.instance.collection('users').doc(uid).update({
+  //                 'walletBalance': FieldValue.increment(amount),
+  //               });
+  //               Navigator.pop(context);
+  //             }
+  //           },
+  //           child: const Text("Confirm Top Up"),
+  //         )
+  //       ],
+  //     ),
+  //   );
+  // }
   void _showTopUpDialog(BuildContext context, String uid) {
-    final TextEditingController amountController = TextEditingController();
+    final TextEditingController amountController = TextEditingController(text: "50");
+    bool isProcessing = false;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        title: const Text("Top Up Wallet", style: TextStyle(fontWeight: FontWeight.w800)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Enter amount to transfer from your linked bank account.", style: TextStyle(fontSize: 12, color: kSlate500)),
-            const SizedBox(height: 20),
-            TextField(
-              controller: amountController,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kEmerald),
-              decoration: InputDecoration(
-                prefixText: "RM ",
-                hintText: "0.00",
-                filled: true,
-                fillColor: kSlate50,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+      barrierDismissible: !isProcessing,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 1. CUSTOM HEADER (Matches other dialogs)
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: const BoxDecoration(
+                      color: kEmerald,
+                      borderRadius: BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Top Up Wallet",
+                                style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18),
+                              ),
+                              const Text(
+                                "SECURE BANK TRANSFER",
+                                style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.1),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () {
+                            if (!isProcessing) Navigator.pop(context);
+                          },
+                          icon: const Icon(LucideIcons.x, color: Colors.white, size: 20),
+                        )
+                      ],
+                    ),
+                  ),
+
+                  // 2. BODY CONTENT
+                  Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "ENTER AMOUNT (RM)",
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 0.5),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Large Centered Text Field
+                        TextField(
+                          controller: amountController,
+                          keyboardType: TextInputType.number,
+                          autofocus: true,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: kEmerald),
+                          decoration: InputDecoration(
+                            prefixText: "RM ",
+                            prefixStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: kSlate400),
+                            filled: true,
+                            fillColor: kSlate50,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 24),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: kSlate100, width: 2)),
+                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: kEmerald, width: 2)),
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // Helper Text to inform user of the limit
+                        const Center(
+                          child: Text(
+                            "Maximum top-up limit: RM 99,999",
+                            style: TextStyle(fontSize: 11, color: kSlate400, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // 3. FULL WIDTH ACTION BUTTON
+                        SizedBox(
+                          width: double.infinity,
+                          height: 56,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: kEmerald,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              elevation: 0,
+                            ),
+                            onPressed: isProcessing
+                                ? null
+                                : () async {
+                              double amount = double.tryParse(amountController.text) ?? 0.0;
+
+                              // --- NEW VALIDATION: Limit to strictly below 100,000 ---
+                              if (amount >= 100000) {
+                                Navigator.pop(context); // CLOSES THE DIALOG FIRST
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: const Text("Top-up amount must be below RM 100,000."),
+                                    backgroundColor: Colors.redAccent,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                );
+                                return; // Stop the function here
+                              }
+
+                              if (amount > 0) {
+                                setDialogState(() => isProcessing = true);
+
+                                // UPDATE FIREBASE BALANCE
+                                await FirebaseFirestore.instance.collection('users').doc(uid).update({
+                                  'walletBalance': FieldValue.increment(amount),
+                                });
+
+                                if (context.mounted) {
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text("Successfully topped up RM ${amount.toStringAsFixed(2)}"),
+                                      backgroundColor: kEmerald,
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                            child: isProcessing
+                                ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                            )
+                                : const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text("Confirm Top Up", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                                SizedBox(width: 10),
+                                Icon(LucideIcons.arrowRight, size: 20)
+                              ],
+                            ),
+                          ),
+                        )
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          ElevatedButton(
-            onPressed: () async {
-              double amount = double.tryParse(amountController.text) ?? 0.0;
-              if (amount > 0) {
-                // UPDATE FIREBASE BALANCE
-                await FirebaseFirestore.instance.collection('users').doc(uid).update({
-                  'walletBalance': FieldValue.increment(amount),
-                });
-                Navigator.pop(context);
-              }
-            },
-            child: const Text("Confirm Top Up"),
-          )
-        ],
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -2237,12 +2457,57 @@ class _ReliefMapState extends State<ReliefMap> {
                                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 0.5)),
                           ),
                           const SizedBox(height: 8),
+
+                          // The Amount Stepper Input
                           _buildAmountStepper(amountController, () => setDialogState(() {})),
+
+                          const SizedBox(height: 8),
+
+                          // --- NEW: Helper Text for Limit ---
+                          const Center(
+                            child: Text(
+                              "Maximum contribution limit: RM 99,999",
+                              style: TextStyle(fontSize: 11, color: kSlate400, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+
                           const SizedBox(height: 24),
                           _buildStepButton(
                             label: "Proceed to Payment",
                             icon: LucideIcons.arrowRight,
-                            onTap: () => setDialogState(() => step = 2),
+                            onTap: () {
+                              // --- NEW: VALIDATION LOGIC ---
+                              double donateAmount = double.tryParse(amountController.text) ?? 0.0;
+
+                              if (donateAmount >= 100000) {
+                                Navigator.pop(context);
+                                // Show error and DO NOT proceed to step 2
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: const Text("Donation amount must be below RM 100,000."),
+                                    backgroundColor: Colors.redAccent,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                );
+                                return;
+                              }
+
+                              if (donateAmount <= 0) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: const Text("Please enter a valid amount."),
+                                    backgroundColor: Colors.redAccent,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                );
+                                return;
+                              }
+
+                              // If validation passes, move to the next step
+                              setDialogState(() => step = 2);
+                            },
                           ),
                         ] else if (step == 2) ...[
                           // STEP 2: CONFIRM
@@ -2985,7 +3250,7 @@ class _ReliefMapState extends State<ReliefMap> {
             ),
             onPressed: () {
               Navigator.pop(context);
-              // Option to direct user to Dashboard/Top Up
+              if (widget.onTopUp != null) widget.onTopUp!(); // Call the trigger
             },
             child: const Text("Top Up Wallet"),
           ),
@@ -3106,20 +3371,48 @@ class _ReliefMapState extends State<ReliefMap> {
     );
   }
 
-  Widget _buildStepButton({required String label, IconData? icon, Color color = kEmerald, required VoidCallback onTap, bool isLoading = false}) {
+  Widget _buildStepButton({
+    required String label,
+    IconData? icon,
+    Color color = kEmerald,
+    required VoidCallback onTap,
+    bool isLoading = false
+  }) {
     return SizedBox(
       width: double.infinity,
       height: 56,
       child: ElevatedButton(
-        style: ElevatedButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
+        style: ElevatedButton.styleFrom(
+            backgroundColor: color,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 0
+        ),
         onPressed: isLoading ? null : onTap,
         child: isLoading
-            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
+            ? const SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)
+        )
             : Row(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min, // Added to keep things centered
           children: [
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-            if (icon != null) ...[const SizedBox(width: 10), Icon(icon, size: 20)],
+            // 1. Wrap the Text in Flexible
+            Flexible(
+              child: Text(
+                label,
+                // 2. Add ellipsis so it shows "Pay RM 500..." instead of breaking
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+              ),
+            ),
+            if (icon != null) ...[
+              const SizedBox(width: 10),
+              Icon(icon, size: 20)
+            ],
           ],
         ),
       ),
@@ -3588,6 +3881,1157 @@ class _PulsingLoadingTextState extends State<PulsingLoadingText> with SingleTick
   }
 }
 
+const Color kSlate200 = Color(0xFFE2E8F0);
+const Color kSlate600 = Color(0xFF475569);
+const Color kBlueBrand = Color(0xFF2563EB);
+//
+// class MyImpactPage extends StatelessWidget {
+//   const MyImpactPage({super.key});
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     final String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
+//
+//     return Scaffold(
+//       backgroundColor: Colors.white,
+//       body: StreamBuilder<DocumentSnapshot>(
+//         stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+//         builder: (context, userSnapshot) {
+//           if (userSnapshot.connectionState == ConnectionState.waiting) {
+//             return const Center(child: CircularProgressIndicator(color: kEmerald));
+//           }
+//
+//           var userData = userSnapshot.data?.data() as Map<String, dynamic>? ?? {};
+//           // Assuming 'impactPoints' is a field in your user doc to determine tier
+//           double impactValue = 0.0;
+//           if (userData?['impactPoints'] != null) {
+//             var p = userData!['impactPoints'];
+//             // Check if it's a number, or if it's a Map containing a number
+//             if (p is num) {
+//               impactValue = p.toDouble();
+//             } else if (p is Map && p['current'] != null) {
+//               impactValue = (p['current'] as num).toDouble();
+//             }
+//           }
+//
+//           // --- Dynamic Tier Calculation ---
+//           String tierName = "Supporter";
+//           String badgeText = "BRONZE";
+//           String description = "Start your journey to help the community.";
+//
+//           if (impactValue >= 100) {
+//             tierName = "Community Pillar";
+//             badgeText = "GOLD";
+//             description = "You are in the top 10% of Malaysian supporters this year.";
+//           } else if (impactValue >= 50) {
+//             tierName = "Active Contributor";
+//             badgeText = "SILVER";
+//             description = "You're making a real difference in the community!";
+//           }
+//
+//           return StreamBuilder<QuerySnapshot>(
+//             stream: FirebaseFirestore.instance
+//                 .collection('users')
+//                 .doc(uid)
+//                 .collection('donations')
+//                 .orderBy('timestamp', descending: true)
+//                 .snapshots(),
+//             builder: (context, donationSnapshot) {
+//               if (donationSnapshot.connectionState == ConnectionState.waiting) {
+//                 return const Center(child: CircularProgressIndicator(color: kEmerald));
+//               }
+//
+//               final donations = donationSnapshot.data?.docs ?? [];
+//
+//               int itemsDonated = 0;
+//               double totalMoney = 0;
+//
+//               for (var doc in donations) {
+//                 var data = doc.data() as Map<String, dynamic>;
+//                 // Logic: check if type is 'item' or 'monetary'
+//                 if (data['type'] == 'item') {
+//                   itemsDonated += (data['quantity'] as num? ?? 1).toInt();
+//                 } else {
+//                   totalMoney += (data['amount'] ?? 0).toDouble();
+//                 }
+//               }
+//
+//               String moneyStr = totalMoney % 1 == 0
+//                   ? totalMoney.toInt().toString()
+//                   : totalMoney.toStringAsFixed(2);
+//
+//               return SingleChildScrollView(
+//                 padding: const EdgeInsets.all(32.0),
+//                 child: Column(
+//                   crossAxisAlignment: CrossAxisAlignment.start,
+//                   children: [
+//                     Text(
+//                       "My Charitable Journey",
+//                       style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w900, color: kSlate800),
+//                     ),
+//                     const SizedBox(height: 6),
+//                     const Text(
+//                       "Quantifying your impact across the Malaysian community.",
+//                       style: TextStyle(color: kSlate500, fontSize: 14),
+//                     ),
+//                     const SizedBox(height: 32),
+//
+//                     LayoutBuilder(builder: (context, constraints) {
+//                       return Wrap(
+//                         spacing: 16,
+//                         runSpacing: 16,
+//                         children: [
+//                           _buildStatCard("Cash Support", "RM $moneyStr", kEmerald),
+//                           _buildStatCard("Physical Items", itemsDonated.toString(), kBlueBrand),
+//
+//                           // FIX: Use named arguments here to pass the dynamic variables
+//                           _buildTierCard(
+//                             tierName: tierName,
+//                             badgeText: badgeText,
+//                             description: description,
+//                           ),
+//                         ],
+//                       );
+//                     }),
+//
+//                     const SizedBox(height: 48),
+//
+//                     // --- AUDIT LIST (TABLE) ---
+//                     Container(
+//                       decoration: BoxDecoration(
+//                         color: Colors.white,
+//                         borderRadius: BorderRadius.circular(16),
+//                         border: Border.all(color: kSlate100),
+//                       ),
+//                       child: Column(
+//                         crossAxisAlignment: CrossAxisAlignment.start,
+//                         children: [
+//                           Padding(
+//                             padding: const EdgeInsets.all(24.0),
+//                             child: Text(
+//                               "Contribution Audit & Certificates",
+//                               style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: kSlate800),
+//                             ),
+//                           ),
+//                           const Divider(height: 1, color: kSlate100),
+//
+//                           if (donations.isEmpty)
+//                             const Padding(
+//                               padding: EdgeInsets.all(32.0),
+//                               child: Center(
+//                                 child: Text("No contributions yet. Start your journey today!", style: TextStyle(color: kSlate400)),
+//                               ),
+//                             )
+//                           else
+//                             Column(
+//                               children: [
+//                                 _buildTableHeader(),
+//                                 ...donations.map((d) {
+//                                   var data = d.data() as Map<String, dynamic>;
+//                                   return Column(
+//                                     children: [
+//                                       _buildTableRow(context, data),
+//                                       const Divider(height: 1, color: kSlate100),
+//                                     ],
+//                                   );
+//                                 }),
+//                               ],
+//                             ),
+//                         ],
+//                       ),
+//                     ),
+//                   ],
+//                 ),
+//               );
+//             },
+//           );
+//         },
+//       ),
+//     );
+//   }
+//
+//   // --- WIDGET HELPER: Stat Card ---
+//   Widget _buildStatCard(String label, String value, Color valueColor) {
+//     return Container(
+//       constraints: const BoxConstraints(minWidth: 160),
+//       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+//       decoration: BoxDecoration(
+//         color: Colors.white,
+//         borderRadius: BorderRadius.circular(16),
+//         border: Border.all(color: kSlate100),
+//       ),
+//       child: Column(
+//         crossAxisAlignment: CrossAxisAlignment.start,
+//         children: [
+//           Text(label, style: const TextStyle(color: kSlate500, fontWeight: FontWeight.w600, fontSize: 12)),
+//           const SizedBox(height: 8),
+//           Text(value, style: GoogleFonts.inter(color: valueColor, fontWeight: FontWeight.w900, fontSize: 22)),
+//         ],
+//       ),
+//     );
+//   }
+//
+//   // --- WIDGET HELPER: Tier Card ---
+//   Widget _buildTierCard({
+//     required String tierName,
+//     required String badgeText,
+//     required String description,
+//   }) {
+//     return Container(
+//       width: double.infinity,
+//       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+//       decoration: BoxDecoration(
+//         color: const Color(0xFF064E3B), // The dark green from your photo
+//         borderRadius: BorderRadius.circular(24),
+//       ),
+//       child: Stack(
+//         clipBehavior: Clip.none,
+//         children: [
+//           Positioned(
+//             right: -10,
+//             top: -10,
+//             child: Icon(
+//               LucideIcons.award,
+//               size: 100,
+//               color: Colors.white.withValues(alpha: 0.05), // Subtle watermark
+//             ),
+//           ),
+//           Row(
+//             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+//             children: [
+//               Expanded(
+//                 child: Column(
+//                   crossAxisAlignment: CrossAxisAlignment.start,
+//                   mainAxisSize: MainAxisSize.min,
+//                   children: [
+//                     const Text(
+//                       "PHILANTHROPY TIER",
+//                       style: TextStyle(
+//                         color: Color(0xFF34D399),
+//                         fontSize: 11,
+//                         fontWeight: FontWeight.w800,
+//                         letterSpacing: 1.2,
+//                       ),
+//                     ),
+//                     const SizedBox(height: 4),
+//                     Text(
+//                       tierName, // Dynamically pulled from the 'if' logic above
+//                       style: GoogleFonts.inter(
+//                         color: Colors.white,
+//                         fontSize: 22,
+//                         fontWeight: FontWeight.w900,
+//                       ),
+//                     ),
+//                     const SizedBox(height: 8),
+//                     Text(
+//                       description, // Dynamically pulled from the 'if' logic above
+//                       style: TextStyle(
+//                         color: Colors.white.withValues(alpha: 0.6),
+//                         fontSize: 12,
+//                       ),
+//                     ),
+//                   ],
+//                 ),
+//               ),
+//               Container(
+//                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+//                 decoration: BoxDecoration(
+//                   color: const Color(0xFF34D399),
+//                   borderRadius: BorderRadius.circular(12),
+//                 ),
+//                 child: Text(
+//                   badgeText,
+//                   style: const TextStyle(
+//                     color: Color(0xFF064E3B),
+//                     fontSize: 12,
+//                     fontWeight: FontWeight.w900,
+//                   ),
+//                 ),
+//               ),
+//             ],
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+//   // --- WIDGET HELPER: Table Header ---
+//   Widget _buildTableHeader() {
+//     const TextStyle headerStyle = TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: kSlate400, letterSpacing: 0.5);
+//     return const Padding(
+//       padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+//       child: Row(
+//         children: [
+//           Expanded(flex: 3, child: Text("DATE", style: headerStyle)),
+//           Expanded(flex: 2, child: Text("TYPE", style: headerStyle)), // Added Type
+//           Expanded(flex: 4, child: Text("CAUSE", style: headerStyle)),
+//           Expanded(flex: 3, child: Text("NGO", style: headerStyle)),
+//           Expanded(flex: 3, child: Text("IMPACT", style: headerStyle)),
+//           Expanded(flex: 2, child: Text("ACTION", style: headerStyle)),
+//         ],
+//       ),
+//     );
+//   }
+//
+//   // --- WIDGET HELPER: Table Row ---
+//   // --- WIDGET HELPER: Table Row ---
+//   Widget _buildTableRow(BuildContext context, Map<String, dynamic> data) {
+//     bool isItem = data['type'] == 'item';
+//
+//     // 1. Format Date
+//     String dateStr = "---";
+//     if (data['timestamp'] != null) {
+//       DateTime dt = (data['timestamp'] as Timestamp).toDate();
+//       dateStr = "${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}";
+//     }
+//
+//     // 2. Dynamic Cause [Location, Category]
+//     String location = data['location'] ?? "Unknown";
+//     String category = data['category'] ?? "General Relief";
+//     String displayCause = "[$location, $category]";
+//
+//     // 3. Dynamic Impact Text
+//     String impactText = isItem
+//         ? "${data['quantity'] ?? 1}x ${data['itemName'] ?? 'Items'}"
+//         : "RM ${data['amount'] ?? 0}";
+//
+//     return Padding(
+//       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+//       child: Row(
+//         children: [
+//           // DATE
+//           Expanded(flex: 3, child: Text(dateStr, style: const TextStyle(color: kSlate500, fontSize: 13))),
+//
+//           // TYPE (Pill Label)
+//           Expanded(
+//             flex: 2,
+//             child: UnconstrainedBox(
+//               alignment: Alignment.centerLeft,
+//               child: Container(
+//                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+//                 decoration: BoxDecoration(
+//                   color: isItem ? const Color(0xFFEEF2FF) : const Color(0xFFECFDF5),
+//                   borderRadius: BorderRadius.circular(4),
+//                 ),
+//                 child: Text(
+//                   isItem ? "ITEM" : "MONEY",
+//                   style: TextStyle(
+//                     color: isItem ? const Color(0xFF4F46E5) : const Color(0xFF10B981),
+//                     fontSize: 10,
+//                     fontWeight: FontWeight.bold,
+//                   ),
+//                 ),
+//               ),
+//             ),
+//           ),
+//
+//           // CAUSE [Location, Category]
+//           Expanded(
+//               flex: 4,
+//               child: Text(
+//                   displayCause,
+//                   style: GoogleFonts.inter(
+//                       fontWeight: FontWeight.w700,
+//                       color: kSlate800,
+//                       fontSize: 13
+//                   )
+//               )
+//           ),
+//
+//           // NGO
+//           Expanded(flex: 3, child: Text(data['ngo'] ?? "MERCY Malaysia", style: const TextStyle(color: kSlate500, fontSize: 13))),
+//
+//           // IMPACT
+//           Expanded(
+//               flex: 3,
+//               child: Text(
+//                   impactText,
+//                   style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: kSlate600, fontSize: 13)
+//               )
+//           ),
+//
+//           // ACTION
+//           Expanded(
+//             flex: 2,
+//             child: _buildCertificateButton(context),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+//
+//   // --- WIDGET HELPER: Certificate Button ---
+//   Widget _buildCertificateButton(BuildContext context) {
+//     return Align(
+//       alignment: Alignment.centerLeft,
+//       child: InkWell(
+//         onTap: () {
+//           // Trigger a simple notification for now
+//           ScaffoldMessenger.of(context).showSnackBar(
+//             const SnackBar(
+//               content: Text("Certificate generated and saved."),
+//               backgroundColor: Color(0xFF1E293B), // kSlate800
+//             ),
+//           );
+//         },
+//         child: Container(
+//           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+//           decoration: BoxDecoration(
+//             color: const Color(0xFFF8FAFC), // kSlate50
+//             borderRadius: BorderRadius.circular(6),
+//             border: Border.all(color: const Color(0xFFE2E8F0)), // kSlate200
+//           ),
+//           child: const Row(
+//             mainAxisSize: MainAxisSize.min,
+//             children: [
+//               Icon(LucideIcons.download, size: 14, color: Color(0xFF475569)), // kSlate600
+//               SizedBox(width: 6),
+//               Text(
+//                 "Certificate",
+//                 style: TextStyle(
+//                   fontSize: 11,
+//                   fontWeight: FontWeight.w600,
+//                   color: Color(0xFF475569), // kSlate600
+//                 ),
+//               ),
+//             ],
+//           ),
+//         ),
+//       ),
+//     );
+//   }
+// // }
+// // ==========================================
+// // 6. MY IMPACT PAGE (FIXED IMPLEMENTATION)
+// // ==========================================
+// class MyImpactPage extends StatelessWidget {
+//   const MyImpactPage({super.key});
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     final String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
+//
+//     return StreamBuilder<QuerySnapshot>(
+//       stream: FirebaseFirestore.instance
+//           .collection('users')
+//           .doc(uid)
+//           .collection('donations')
+//           .orderBy('timestamp', descending: true)
+//           .snapshots(),
+//       builder: (context, snapshot) {
+//         if (snapshot.connectionState == ConnectionState.waiting) {
+//           return const Center(child: CircularProgressIndicator(color: kEmerald));
+//         }
+//
+//         final docs = snapshot.data?.docs ?? [];
+//         double totalCash = 0;
+//         int totalItems = 0;
+//
+//         // FIXED: Corrected logic to iterate and extract totals
+//         for (var doc in docs) {
+//           final data = doc.data() as Map<String, dynamic>;
+//
+//           if (data['type'] == 'money') {
+//             // Use .toDouble() for cash/currency
+//             totalCash += (data['amount'] ?? 0.0).toDouble();
+//           } else if (data['type'] == 'item') {
+//             // FIX: Cast to num first, then convert to int
+//             totalItems += (data['quantity'] as num? ?? 1).toInt();
+//           }
+//         }
+//
+//         return SingleChildScrollView(
+//           padding: const EdgeInsets.all(24),
+//           child: Column(
+//             crossAxisAlignment: CrossAxisAlignment.start,
+//             children: [
+//               // 1. Header Section
+//               Text("My Charitable Journey",
+//                   style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w900, color: kSlate800)),
+//               const SizedBox(height: 4),
+//               const Text("Quantifying your impact across the Malaysian community.",
+//                   style: TextStyle(color: kSlate500, fontSize: 14)),
+//               const SizedBox(height: 32),
+//
+//               // 2. Horizontal Scroll for Stat Cards
+//               SingleChildScrollView(
+//                 scrollDirection: Axis.horizontal,
+//                 physics: const BouncingScrollPhysics(),
+//                 child: Row(
+//                   children: [
+//                     _buildStatCard("Cash Support", "RM ${totalCash.toStringAsFixed(2)}", kEmerald),
+//                     const SizedBox(width: 16),
+//                     _buildStatCard("Physical Items", totalItems.toString(), kBlue),
+//                     const SizedBox(width: 16),
+//                     _buildTierCard(),
+//                   ],
+//                 ),
+//               ),
+//
+//               const SizedBox(height: 32),
+//
+//               // 3. Contribution Table inside a Card Container
+//               Container(
+//                 decoration: BoxDecoration(
+//                   color: Colors.white,
+//                   borderRadius: BorderRadius.circular(24),
+//                   border: Border.all(color: kSlate100),
+//                   boxShadow: [
+//                     BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))
+//                   ],
+//                 ),
+//                 child: Column(
+//                   crossAxisAlignment: CrossAxisAlignment.start,
+//                   children: [
+//                     Padding(
+//                       padding: const EdgeInsets.all(24),
+//                       child: Text("Contribution Audit & Certificates",
+//                           style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: kSlate800)),
+//                     ),
+//                     const Divider(height: 1, color: kSlate100),
+//                     if (docs.isEmpty)
+//                       const Padding(
+//                         padding: EdgeInsets.all(32),
+//                         child: Center(child: Text("No contributions found yet.", style: TextStyle(color: kSlate400))),
+//                       )
+//                     else
+//                       SingleChildScrollView(
+//                         scrollDirection: Axis.horizontal,
+//                         physics: const BouncingScrollPhysics(),
+//                         child: DataTable(
+//                           horizontalMargin: 24,
+//                           columnSpacing: 32,
+//                           columns: const [
+//                             DataColumn(label: Text("DATE")),
+//                             DataColumn(label: Text("TYPE")),
+//                             DataColumn(label: Text("CAUSE")),
+//                             DataColumn(label: Text("NGO")),
+//                             DataColumn(label: Text("IMPACT")),
+//                             DataColumn(label: Text("ACTION")),
+//                           ],
+//                           rows: docs.map((doc) => _buildDataRow(doc.data() as Map<String, dynamic>)).toList(),
+//                         ),
+//                       ),
+//                   ],
+//                 ),
+//               )
+//             ],
+//           ),
+//         );
+//       },
+//     );
+//   }
+//
+//   Widget _buildStatCard(String title, String value, Color valueColor) {
+//     return Container(
+//       width: 180,
+//       padding: const EdgeInsets.all(20),
+//       decoration: BoxDecoration(
+//         color: Colors.white,
+//         borderRadius: BorderRadius.circular(20),
+//         border: Border.all(color: kSlate100),
+//       ),
+//       child: Column(
+//         crossAxisAlignment: CrossAxisAlignment.start,
+//         children: [
+//           Text(title, style: const TextStyle(color: kSlate500, fontWeight: FontWeight.bold, fontSize: 12)),
+//           const SizedBox(height: 12),
+//           Text(value, style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w900, color: valueColor)),
+//         ],
+//       ),
+//     );
+//   }
+//
+//   Widget _buildTierCard() {
+//     return Container(
+//       width: 320,
+//       padding: const EdgeInsets.all(20),
+//       decoration: BoxDecoration(
+//         color: const Color(0xFF064E3B),
+//         borderRadius: BorderRadius.circular(20),
+//       ),
+//       child: Column(
+//         crossAxisAlignment: CrossAxisAlignment.start,
+//         children: [
+//           Row(
+//             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+//             children: [
+//               const Text("PHILANTHROPY TIER", style: TextStyle(color: Color(0xFF34D399), fontSize: 10, fontWeight: FontWeight.w900)),
+//               Container(
+//                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+//                 decoration: BoxDecoration(color: const Color(0xFF34D399), borderRadius: BorderRadius.circular(8)),
+//                 child: const Text("GOLD", style: TextStyle(color: Color(0xFF064E3B), fontSize: 10, fontWeight: FontWeight.w900)),
+//               )
+//             ],
+//           ),
+//           const SizedBox(height: 8),
+//           Text("Community Pillar", style: GoogleFonts.inter(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+//           const Text("You are in the top 10% of Malaysian supporters this year.", style: TextStyle(color: Colors.white70, fontSize: 12)),
+//         ],
+//       ),
+//     );
+//   }
+//
+//   DataRow _buildDataRow(Map<String, dynamic> data) {
+//     bool isMoney = data['type'] == 'money';
+//     String dateStr = "2024-10-24";
+//     if (data['timestamp'] != null) {
+//       DateTime d = (data['timestamp'] as Timestamp).toDate();
+//       dateStr = "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
+//     }
+//
+//     return DataRow(cells: [
+//       DataCell(Text(dateStr)),
+//       DataCell(Text(isMoney ? "MONEY" : "ITEM")),
+//       DataCell(Text(data['cause'] ?? "Relief Aid")),
+//       DataCell(Text(data['ngo'] ?? "MERCY Malaysia")),
+//       DataCell(Text(isMoney ? "RM ${data['amount']}" : "${data['quantity']}x ${data['itemName']}")),
+//       DataCell(const Icon(LucideIcons.download, size: 16, color: kSlate400)),
+//     ]);
+//   }
+// }
+
+// // ==========================================
+// // 6. MY IMPACT PAGE (DYNAMIC WITH FIRESTORE IMPACT SCORE)
+// // ==========================================
+// class MyImpactPage extends StatelessWidget {
+//   const MyImpactPage({super.key});
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     final String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
+//
+//     // 1. OUTER STREAM: Fetch the User's Document (for impactValue/Tier)
+//     return StreamBuilder<DocumentSnapshot>(
+//         stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+//         builder: (context, userSnapshot) {
+//           if (userSnapshot.connectionState == ConnectionState.waiting) {
+//             return const Center(child: CircularProgressIndicator(color: kEmerald));
+//           }
+//
+//           var userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+//
+//           // SAFE EXTRACTION: Matches DonorDashboard logic
+//           double impactScore = 0.0;
+//           if (userData?['impactValue'] != null) {
+//             var val = userData!['impactValue'];
+//             impactScore = (val is Map)
+//                 ? (val['amount']?.toDouble() ?? 0.0)
+//                 : (val is num ? val.toDouble() : 0.0);
+//           }
+//
+//           // 2. INNER STREAM: Fetch the Donations (for Table and Totals)
+//           return StreamBuilder<QuerySnapshot>(
+//             stream: FirebaseFirestore.instance
+//                 .collection('users')
+//                 .doc(uid)
+//                 .collection('donations')
+//                 .orderBy('timestamp', descending: true)
+//                 .snapshots(),
+//             builder: (context, snapshot) {
+//               if (snapshot.connectionState == ConnectionState.waiting) {
+//                 return const Center(child: CircularProgressIndicator(color: kEmerald));
+//               }
+//
+//               final docs = snapshot.data?.docs ?? [];
+//               double totalCash = 0;
+//               int totalItems = 0;
+//
+//               // Calculate totals for the stat cards
+//               for (var doc in docs) {
+//                 final data = doc.data() as Map<String, dynamic>;
+//                 if (data['type'] == 'money') {
+//                   totalCash += (data['amount'] ?? 0.0).toDouble();
+//                 } else if (data['type'] == 'item') {
+//                   totalItems += (data['quantity'] as num? ?? 1).toInt();
+//                 }
+//               }
+//
+//               return SingleChildScrollView(
+//                 padding: const EdgeInsets.all(24),
+//                 child: Column(
+//                   crossAxisAlignment: CrossAxisAlignment.start,
+//                   children: [
+//                     // 1. Header Section
+//                     Text("My Charitable Journey",
+//                         style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w900, color: kSlate800)),
+//                     const SizedBox(height: 4),
+//                     const Text("Quantifying your impact across the Malaysian community.",
+//                         style: TextStyle(color: kSlate500, fontSize: 14)),
+//                     const SizedBox(height: 32),
+//
+//                     // 2. Horizontal Scroll for Stat Cards
+//                     SingleChildScrollView(
+//                       scrollDirection: Axis.horizontal,
+//                       physics: const BouncingScrollPhysics(),
+//                       child: Row(
+//                         children: [
+//                           _buildStatCard("Cash Support", "RM ${totalCash.toStringAsFixed(2)}", kEmerald),
+//                           const SizedBox(width: 16),
+//                           _buildStatCard("Physical Items", totalItems.toString(), kBlue),
+//                           const SizedBox(width: 16),
+//                           _buildTierCard(impactScore),
+//                         ],
+//                       ),
+//                     ),
+//
+//                     const SizedBox(height: 32),
+//
+//                     // 3. Contribution Table inside a Card Container
+//                     Container(
+//                       decoration: BoxDecoration(
+//                         color: Colors.white,
+//                         borderRadius: BorderRadius.circular(24),
+//                         border: Border.all(color: kSlate100),
+//                         boxShadow: [
+//                           BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))
+//                         ],
+//                       ),
+//                       child: Column(
+//                         crossAxisAlignment: CrossAxisAlignment.start,
+//                         children: [
+//                           Padding(
+//                             padding: const EdgeInsets.all(24),
+//                             child: Text("Contribution Audit & Certificates",
+//                                 style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: kSlate800)),
+//                           ),
+//                           const Divider(height: 1, color: kSlate100),
+//                           if (docs.isEmpty)
+//                             const Padding(
+//                               padding: EdgeInsets.all(32),
+//                               child: Center(child: Text("No contributions found yet.", style: TextStyle(color: kSlate400))),
+//                             )
+//                           else
+//                             SingleChildScrollView(
+//                               scrollDirection: Axis.horizontal,
+//                               physics: const BouncingScrollPhysics(),
+//                               child: DataTable(
+//                                 horizontalMargin: 24,
+//                                 columnSpacing: 32,
+//                                 columns: const [
+//                                   DataColumn(label: Text("DATE")),
+//                                   DataColumn(label: Text("TYPE")),
+//                                   DataColumn(label: Text("CAUSE")),
+//                                   DataColumn(label: Text("NGO")),
+//                                   DataColumn(label: Text("IMPACT")),
+//                                   DataColumn(label: Text("ACTION")),
+//                                 ],
+//                                 rows: docs.map((doc) => _buildDataRow(doc.data() as Map<String, dynamic>)).toList(),
+//                               ),
+//                             ),
+//                         ],
+//                       ),
+//                     )
+//                   ],
+//                 ),
+//               );
+//             },
+//           );
+//         }
+//     );
+//   }
+//
+//   Widget _buildStatCard(String title, String value, Color valueColor) {
+//     return Container(
+//       width: 180,
+//       padding: const EdgeInsets.all(20),
+//       decoration: BoxDecoration(
+//         color: Colors.white,
+//         borderRadius: BorderRadius.circular(20),
+//         border: Border.all(color: kSlate100),
+//       ),
+//       child: Column(
+//         crossAxisAlignment: CrossAxisAlignment.start,
+//         children: [
+//           Text(title, style: const TextStyle(color: kSlate500, fontWeight: FontWeight.bold, fontSize: 12)),
+//           const SizedBox(height: 12),
+//           Text(value, style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w900, color: valueColor)),
+//         ],
+//       ),
+//     );
+//   }
+//
+//   Widget _buildTierCard(double impactScore) {
+//     String tierName = "BRONZE";
+//     String tierTitle = "Rising Supporter";
+//     String tierDesc = "Your journey of making an impact begins here.";
+//     Color badgeColor = const Color(0xFFFBBF24);
+//     Color bgColor = const Color(0xFF78350F);
+//
+//     if (impactScore >= 5000) {
+//       tierName = "PLATINUM";
+//       tierTitle = "National Hero";
+//       tierDesc = "You are in the top 1% of supporters this year.";
+//       badgeColor = const Color(0xFF22D3EE);
+//       bgColor = const Color(0xFF164E63);
+//     } else if (impactScore >= 1000) {
+//       tierName = "GOLD";
+//       tierTitle = "Community Pillar";
+//       tierDesc = "You are in the top 10% of Malaysian supporters.";
+//       badgeColor = const Color(0xFF34D399);
+//       bgColor = const Color(0xFF064E3B);
+//     } else if (impactScore >= 200) {
+//       tierName = "SILVER";
+//       tierTitle = "Generous Giver";
+//       tierDesc = "A consistent beacon of hope for communities.";
+//       badgeColor = const Color(0xFF94A3B8);
+//       bgColor = const Color(0xFF1E293B);
+//     }
+//
+//     return Container(
+//       width: 320,
+//       padding: const EdgeInsets.all(20),
+//       decoration: BoxDecoration(
+//         color: bgColor,
+//         borderRadius: BorderRadius.circular(20),
+//       ),
+//       child: Column(
+//         crossAxisAlignment: CrossAxisAlignment.start,
+//         children: [
+//           Row(
+//             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+//             children: [
+//               Text("PHILANTHROPY TIER", style: TextStyle(color: badgeColor, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
+//               Container(
+//                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+//                 decoration: BoxDecoration(color: badgeColor, borderRadius: BorderRadius.circular(8)),
+//                 child: Text(tierName, style: TextStyle(color: bgColor, fontSize: 10, fontWeight: FontWeight.w900)),
+//               )
+//             ],
+//           ),
+//           const SizedBox(height: 8),
+//           Text(tierTitle, style: GoogleFonts.inter(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+//           Text(tierDesc, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+//         ],
+//       ),
+//     );
+//   }
+//
+//   DataRow _buildDataRow(Map<String, dynamic> data) {
+//     bool isMoney = data['type'] == 'money';
+//     String dateStr = "N/A";
+//     if (data['timestamp'] != null) {
+//       DateTime d = (data['timestamp'] as Timestamp).toDate();
+//       dateStr = "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
+//     }
+//
+//     return DataRow(cells: [
+//       DataCell(Text(dateStr)),
+//       DataCell(Text(isMoney ? "MONEY" : "ITEM")),
+//       DataCell(Text(data['cause'] ?? "Relief Aid")),
+//       DataCell(Text(data['ngo'] ?? "MERCY Malaysia")),
+//       DataCell(Text(isMoney ? "RM ${data['amount']}" : "${data['quantity']}x ${data['itemName']}")),
+//       DataCell(const Icon(LucideIcons.download, size: 16, color: kSlate400)),
+//     ]);
+//   }
+// }
+
+// // ==========================================
+// // 6. MY IMPACT PAGE (DYNAMIC WITH FIRESTORE IMPACT SCORE)
+// // ==========================================
+// class MyImpactPage extends StatelessWidget {
+//   const MyImpactPage({super.key});
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     final String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
+//
+//     // 1. FETCH GLOBAL RELIEF CATEGORY (DYNAMIC)
+//     return StreamBuilder<DocumentSnapshot>(
+//         stream: FirebaseFirestore.instance.collection('relief_cache').doc('current_status').snapshots(),
+//         builder: (context, cacheSnapshot) {
+//           // Default fallback if database is empty
+//           String globalCategory = "Relief Aid";
+//
+//           if (cacheSnapshot.hasData && cacheSnapshot.data!.exists) {
+//             var cacheData = cacheSnapshot.data!.data() as Map<String, dynamic>;
+//
+//             // Navigate the 'results' array from your screenshot
+//             List<dynamic>? results = cacheData['results'] as List<dynamic>?;
+//
+//             if (results != null && results.isNotEmpty) {
+//               // This pulls "Flood Relief" (or whatever you change it to) from the first item
+//               globalCategory = results[0]['category'] ?? "Relief Aid";
+//               print("DEBUG: Category updated to -> $globalCategory");
+//             }
+//           }
+//
+//           // 2. Fetch User Data (Impact Score)
+//           return StreamBuilder<DocumentSnapshot>(
+//             stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+//             builder: (context, userSnapshot) {
+//               if (userSnapshot.connectionState == ConnectionState.waiting) {
+//                 return const Center(child: CircularProgressIndicator(color: kEmerald));
+//               }
+//
+//               var userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+//               double impactScore = (userData?['impactValue'] as num? ?? 0.0).toDouble();
+//
+//               // 3. Fetch Donations List
+//               return StreamBuilder<QuerySnapshot>(
+//                 stream: FirebaseFirestore.instance
+//                     .collection('users')
+//                     .doc(uid)
+//                     .collection('donations')
+//                     .orderBy('timestamp', descending: true)
+//                     .snapshots(),
+//                 builder: (context, snapshot) {
+//                   if (snapshot.connectionState == ConnectionState.waiting) {
+//                     return const Center(child: CircularProgressIndicator(color: kEmerald));
+//                   }
+//
+//                   final docs = snapshot.data?.docs ?? [];
+//                   double totalCash = 0;
+//                   int totalItems = 0;
+//
+//                   for (var doc in docs) {
+//                     final data = doc.data() as Map<String, dynamic>;
+//                     if (data['type'] == 'money') {
+//                       totalCash += (data['amount'] as num? ?? 0.0).toDouble();
+//                     } else if (data['type'] == 'item') {
+//                       totalItems += (data['quantity'] as num? ?? 1).toInt();
+//                     }
+//                   }
+//
+//                   return SingleChildScrollView(
+//                     padding: const EdgeInsets.all(24),
+//                     child: Column(
+//                       crossAxisAlignment: CrossAxisAlignment.start,
+//                       children: [
+//                         Text("My Charitable Journey",
+//                             style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w900, color: kSlate800)),
+//                         const SizedBox(height: 32),
+//                         _buildTierCard(impactScore),
+//                         const SizedBox(height: 16),
+//                         Row(
+//                           children: [
+//                             Expanded(child: _buildStatCard("Cash Support", "RM ${totalCash.toStringAsFixed(2)}", kEmerald)),
+//                             const SizedBox(width: 16),
+//                             Expanded(child: _buildStatCard("Physical Items", totalItems.toString(), kBlueBrand)),
+//                           ],
+//                         ),
+//                         const SizedBox(height: 32),
+//                         Container(
+//                           decoration: BoxDecoration(
+//                             color: Colors.white,
+//                             borderRadius: BorderRadius.circular(24),
+//                             border: Border.all(color: kSlate100),
+//                           ),
+//                           child: Column(
+//                             children: [
+//                               if (docs.isEmpty)
+//                                 const Padding(
+//                                   padding: EdgeInsets.all(32),
+//                                   child: Center(child: Text("No contributions found yet.")),
+//                                 )
+//                               else
+//                                 SingleChildScrollView(
+//                                   scrollDirection: Axis.horizontal,
+//                                   child: DataTable(
+//                                     columns: const [
+//                                       DataColumn(label: Text("DATE")),
+//                                       DataColumn(label: Text("TYPE")),
+//                                       DataColumn(label: Text("CAUSE")),
+//                                       DataColumn(label: Text("NGO")),
+//                                       DataColumn(label: Text("IMPACT")),
+//                                       DataColumn(label: Text("ACTION")),
+//                                     ],
+//                                     // PASS THE DYNAMIC CATEGORY HERE
+//                                     rows: docs.map((doc) {
+//                                       final donationData = doc.data() as Map<String, dynamic>;
+//                                       final String donationTarget = donationData['target'] ?? "";
+//
+//                                       // 1. LOOK UP THE CORRECT CATEGORY
+//                                       // We search the 'activeReliefs' list for a map where 'location' == donationTarget
+//                                       String matchedCategory = "Relief Aid"; // Fallback if no match is found
+//
+//                                       if (cacheSnapshot.hasData && cacheSnapshot.data!.exists) {
+//                                         var cacheData = cacheSnapshot.data!.data() as Map<String, dynamic>;
+//                                         List<dynamic> results = cacheData['results'] as List<dynamic>? ?? [];
+//
+//                                         // This finds the specific relief effort for this donation's location
+//                                         var foundRelief = results.firstWhere(
+//                                               (res) => res['location'] == donationTarget,
+//                                           orElse: () => null,
+//                                         );
+//
+//                                         if (foundRelief != null) {
+//                                           matchedCategory = foundRelief['category'] ?? "Relief Aid";
+//                                         }
+//                                       }
+//
+//                                       // 2. PASS THE DYNAMIC CATEGORY TO YOUR FUNCTION
+//                                       return _buildDataRow(donationData, matchedCategory);
+//                                     }).toList(),
+//                                   ),
+//                                 ),
+//                             ],
+//                           ),
+//                         )
+//                       ],
+//                     ),
+//                   );
+//                 },
+//               );
+//             },
+//           );
+//         }
+//     );
+//   }
+//
+//   Widget _buildStatCard(String title, String value, Color valueColor) {
+//     return Container(
+//       padding: const EdgeInsets.all(20),
+//       decoration: BoxDecoration(
+//         color: Colors.white,
+//         borderRadius: BorderRadius.circular(20),
+//         border: Border.all(color: kSlate100),
+//       ),
+//       child: Column(
+//         crossAxisAlignment: CrossAxisAlignment.start,
+//         children: [
+//           Text(title, style: const TextStyle(
+//               color: kSlate500, fontWeight: FontWeight.bold, fontSize: 12)),
+//           const SizedBox(height: 12),
+//           Text(value, style: GoogleFonts.inter(
+//               fontSize: 18, fontWeight: FontWeight.w900, color: valueColor)),
+//         ],
+//       ),
+//     );
+//   }
+//
+//   Widget _buildTierCard(double impactScore) {
+//     String tierName = "BRONZE";
+//     String tierTitle = "Rising Supporter";
+//     String tierDesc = "Your journey of making an impact begins here.";
+//     Color badgeColor = const Color(0xFFFBBF24);
+//     Color bgColor = const Color(0xFF78350F);
+//
+//     if (impactScore >= 5000) {
+//       tierName = "PLATINUM";
+//       tierTitle = "National Hero";
+//       tierDesc = "You are in the top 1% of supporters this year.";
+//       badgeColor = const Color(0xFF22D3EE);
+//       bgColor = const Color(0xFF164E63);
+//     } else if (impactScore >= 1000) {
+//       tierName = "GOLD";
+//       tierTitle = "Community Pillar";
+//       tierDesc = "You are in the top 10% of Malaysian supporters.";
+//       badgeColor = const Color(0xFF34D399);
+//       bgColor = const Color(0xFF064E3B);
+//     } else if (impactScore >= 200) {
+//       tierName = "SILVER";
+//       tierTitle = "Generous Giver";
+//       tierDesc = "A consistent beacon of hope for communities.";
+//       badgeColor = const Color(0xFF94A3B8);
+//       bgColor = const Color(0xFF1E293B);
+//     }
+//
+//     return Container(
+//       width: double.infinity,
+//       padding: const EdgeInsets.all(20),
+//       decoration: BoxDecoration(
+//         color: bgColor,
+//         borderRadius: BorderRadius.circular(20),
+//       ),
+//       child: Column(
+//         crossAxisAlignment: CrossAxisAlignment.start,
+//         children: [
+//           Row(
+//             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+//             children: [
+//               Text("PHILANTHROPY TIER", style: TextStyle(color: badgeColor,
+//                   fontSize: 10,
+//                   fontWeight: FontWeight.w900,
+//                   letterSpacing: 1.1)),
+//               Container(
+//                 padding: const EdgeInsets.symmetric(
+//                     horizontal: 10, vertical: 4),
+//                 decoration: BoxDecoration(
+//                     color: badgeColor, borderRadius: BorderRadius.circular(8)),
+//                 child: Text(tierName, style: TextStyle(
+//                     color: bgColor, fontSize: 10, fontWeight: FontWeight.w900)),
+//               )
+//             ],
+//           ),
+//           const SizedBox(height: 8),
+//           Text(tierTitle, style: GoogleFonts.inter(
+//               color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+//           Text(tierDesc,
+//               style: const TextStyle(color: Colors.white70, fontSize: 12)),
+//         ],
+//       ),
+//     );
+//   }
+//
+// // UPDATED: Added category parameter to the builder
+//   DataRow _buildDataRow(Map<String, dynamic> data, String fetchedCategory) {
+//     bool isMoney = data['type'] == 'money';
+//
+//     // 1. Format Date
+//     String dateStr = "N/A";
+//     if (data['timestamp'] != null) {
+//       DateTime d = (data['timestamp'] as Timestamp).toDate();
+//       dateStr = "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
+//     }
+//
+//     // 2. Dynamic Cause String
+//     String location = data['target'] ?? "General Location";
+//     String dynamicCause = "$location, $fetchedCategory";
+//
+//     // 3. Impact Text (Formatted to 2 decimals for RM)
+//     String impactText = isMoney
+//         ? "RM ${(data['amount'] as num? ?? 0.0).toStringAsFixed(2)}"
+//         : "${data['quantity'] ?? '1'}x ${data['itemName'] ?? 'Item'}";
+//
+//     return DataRow(cells: [
+//       DataCell(Text(dateStr)),
+//       DataCell(
+//         Container(
+//           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+//           decoration: BoxDecoration(
+//             color: (isMoney ? kEmerald : kBlueBrand).withOpacity(0.1),
+//             borderRadius: BorderRadius.circular(8),
+//           ),
+//           child: Text(
+//             isMoney ? "MONEY" : "ITEM",
+//             style: TextStyle(color: isMoney ? kEmerald : kBlueBrand, fontSize: 10, fontWeight: FontWeight.w900),
+//           ),
+//         ),
+//       ),
+//       DataCell(Text(dynamicCause, style: const TextStyle(fontWeight: FontWeight.w600))),
+//       DataCell(Text(data['ngo'] ?? "MERCY Malaysia", style: const TextStyle(color: kSlate500))),
+//       DataCell(Text(impactText, style: const TextStyle(fontWeight: FontWeight.bold))),
+//
+//       // 4. FIXED ACTION COLUMN: Matching the Screenshot UI
+//       DataCell(
+//         ElevatedButton.icon(
+//           onPressed: () {
+//             // Add your download/view logic here
+//             print("Downloading certificate for: ${data['id']}");
+//           },
+//           icon: const Icon(LucideIcons.download, size: 14, color: kSlate600),
+//           label: const Text(
+//             "Certificate",
+//             style: TextStyle(color: kSlate800, fontSize: 12, fontWeight: FontWeight.w600),
+//           ),
+//           style: ElevatedButton.styleFrom(
+//             backgroundColor: kSlate50, // Light grey background
+//             elevation: 0,
+//             shape: RoundedRectangleBorder(
+//               borderRadius: BorderRadius.circular(10),
+//               side: const BorderSide(color: kSlate100), // Subtle border
+//             ),
+//             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+//           ),
+//         ),
+//       ),
+//     ]);
+//   }
+// }
+
+// ==========================================
+// 6. MY IMPACT PAGE (DYNAMIC WITH FIRESTORE IMPACT SCORE)
+// ==========================================
 class MyImpactPage extends StatelessWidget {
   const MyImpactPage({super.key});
 
@@ -3595,304 +5039,300 @@ class MyImpactPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
-        builder: (context, userSnapshot) {
-          if (userSnapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: kEmerald));
+    return StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('relief_cache').doc('current_status').snapshots(),
+        builder: (context, cacheSnapshot) {
+          // Initialize results list from cache
+          List<dynamic> activeResults = [];
+          if (cacheSnapshot.hasData && cacheSnapshot.data!.exists) {
+            var cacheData = cacheSnapshot.data!.data() as Map<String, dynamic>;
+            activeResults = cacheData['results'] as List<dynamic>? ?? [];
           }
 
-          var userData = userSnapshot.data?.data() as Map<String, dynamic>? ?? {};
-          // Assuming 'impactPoints' or similar exists in your user doc
-          double impactValue = (userData['impactPoints'] ?? 0.0).toDouble();
-
-          // Tier Calculation
-          String tierName = "Supporter";
-          String badgeText = "BRONZE";
-          if (impactValue >= 100) {
-            tierName = "Community Pillar";
-            badgeText = "GOLD";
-          } else if (impactValue >= 50) {
-            tierName = "Active Contributor";
-            badgeText = "SILVER";
-          }
-
-          return StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('users')
-                .doc(uid)
-                .collection('donations')
-                .orderBy('timestamp', descending: true)
-                .snapshots(),
-            builder: (context, donationSnapshot) {
-              if (donationSnapshot.connectionState == ConnectionState.waiting) {
+          return StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+            builder: (context, userSnapshot) {
+              if (userSnapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator(color: kEmerald));
               }
 
-              final donations = donationSnapshot.data?.docs ?? [];
+              var userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+              double impactScore = (userData?['impactValue'] as num? ?? 0.0).toDouble();
 
-              // Count items and calculate total money
-              int itemsDonated = 0;
-              double totalMoney = 0;
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(uid)
+                    .collection('donations')
+                    .orderBy('timestamp', descending: true)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator(color: kEmerald));
+                  }
 
-              for (var doc in donations) {
-                var data = doc.data() as Map<String, dynamic>;
-                if (data['type'] == 'item') {
-                  itemsDonated++;
-                } else {
-                  totalMoney += (data['amount'] ?? 0).toDouble();
-                }
-              }
+                  final docs = snapshot.data?.docs ?? [];
+                  double totalCash = 0;
+                  int totalItems = 0;
 
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 16),
-                    Text(
-                      "My Charitable Journey",
-                      style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w900, color: kSlate800),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      "Quantifying your impact across the Malaysian community.",
-                      style: TextStyle(color: kSlate500, fontSize: 13),
-                    ),
-                    const SizedBox(height: 32),
+                  for (var doc in docs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    if (data['type'] == 'money') {
+                      totalCash += (data['amount'] as num? ?? 0.0).toDouble();
+                    } else if (data['type'] == 'item') {
+                      totalItems += (data['quantity'] as num? ?? 1).toInt();
+                    }
+                  }
 
-                    // --- TOP CARDS ROW ---
-                    Row(
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildStatCard("Total Donated", "RM ${totalMoney.toStringAsFixed(2)}", kEmerald),
-                        const SizedBox(width: 12),
-                        _buildStatCard("Items Gifted", itemsDonated.toString(), Colors.orange),
+                        Text("My Charitable Journey",
+                            style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w900, color: kSlate800)),
+                        const SizedBox(height: 32),
+                        _buildTierCard(impactScore),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(child: _buildStatCard("Cash Support", "RM ${totalCash.toStringAsFixed(2)}", kEmerald)),
+                            const SizedBox(width: 16),
+                            Expanded(child: _buildStatCard("Physical Items", totalItems.toString(), kBlueBrand)),
+                          ],
+                        ),
+                        const SizedBox(height: 32),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: kSlate100),
+                          ),
+                          child: Column(
+                            children: [
+                              if (docs.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.all(32),
+                                  child: Center(child: Text("No contributions found yet.")),
+                                )
+                              else
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: DataTable(
+                                    columns: const [
+                                      DataColumn(label: Text("DATE")),
+                                      DataColumn(label: Text("TYPE")),
+                                      DataColumn(label: Text("CAUSE")),
+                                      DataColumn(label: Text("NGO")),
+                                      DataColumn(label: Text("IMPACT")),
+                                      DataColumn(label: Text("ACTION")),
+                                    ],
+                                    rows: docs.map((doc) {
+                                      final donationData = doc.data() as Map<String, dynamic>;
+                                      final String donationTarget = donationData['target'] ?? "";
+
+                                      var foundRelief = activeResults.firstWhere(
+                                            (res) => res['location'] == donationTarget,
+                                        orElse: () => null,
+                                      );
+
+                                      String matchedCategory = foundRelief != null
+                                          ? foundRelief['category'].toString()
+                                          : "Relief Aid";
+
+                                      // Ensure 'context' is the FIRST argument
+                                      return _buildDataRow(context, donationData, matchedCategory);
+                                    }).toList(),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        )
                       ],
                     ),
-                    const SizedBox(height: 16),
-
-                    // --- PHILANTHROPY TIER CARD ---
-                    _buildTierCard(tierName, badgeText),
-
-                    const SizedBox(height: 40),
-
-                    // --- AUDIT LIST HEADER ---
-                    Text(
-                      "Contribution Audit & Certificates",
-                      style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800, color: kSlate800),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // --- AUDIT LIST ---
-                    if (donations.isEmpty)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: kSlate50,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: kSlate100),
-                        ),
-                        child: const Center(
-                          child: Text("No contributions yet. Start your journey today!", style: TextStyle(color: kSlate400)),
-                        ),
-                      )
-                    else
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: donations.length,
-                        itemBuilder: (context, index) {
-                          var data = donations[index].data() as Map<String, dynamic>;
-                          return _buildAuditCard(context, data);
-                        },
-                      ),
-                  ],
-                ),
+                  );
+                },
               );
             },
           );
-        },
-      ),
+        }
     );
   }
 
-  // --- WIDGET HELPER: Stat Card ---
-  Widget _buildStatCard(String label, String value, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: kSlate100),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: const TextStyle(color: kSlate400, fontSize: 12, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Text(value, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w900, color: kSlate800)),
-          ],
-        ),
-      ),
-    );
-  }
+  // --- Helper Widgets ---
 
-  // --- WIDGET HELPER: Tier Card ---
-  Widget _buildTierCard(String tierName, String badgeText) {
+  Widget _buildStatCard(String title, String value, Color valueColor) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF115E59),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        image: const DecorationImage(
-          image: NetworkImage("https://www.transparenttextures.com/patterns/cubes.png"),
-          opacity: 0.1,
-          fit: BoxFit.cover,
-        ),
+        border: Border.all(color: kSlate100),
       ),
-      child: Stack(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Positioned(
-            right: -20,
-            bottom: -20,
-            child: Icon(LucideIcons.award, size: 100, color: Colors.white.withOpacity(0.05)),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
-                    child: Text(badgeText, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                tierName,
-                style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                "You are in the top 10% of Malaysian supporters this year.",
-                style: GoogleFonts.inter(fontSize: 12, color: Colors.white.withOpacity(0.8)),
-              ),
-            ],
-          ),
+          Text(title, style: const TextStyle(color: kSlate500, fontWeight: FontWeight.bold, fontSize: 12)),
+          const SizedBox(height: 12),
+          Text(value, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w900, color: valueColor)),
         ],
       ),
     );
   }
 
-  // --- WIDGET HELPER: Audit List Card ---
-  Widget _buildAuditCard(BuildContext context, Map<String, dynamic> data) {
-    bool isItem = data['type'] == 'item';
+  Widget _buildTierCard(double impactScore) {
+    String tierName = "BRONZE";
+    String tierTitle = "Rising Supporter";
+    String tierDesc = "Your journey of making an impact begins here.";
+    Color badgeColor = const Color(0xFFFBBF24);
+    Color bgColor = const Color(0xFF78350F);
 
-    String dateStr = "Unknown Date";
-    if (data['timestamp'] != null) {
-      DateTime dt = (data['timestamp'] as Timestamp).toDate();
-      dateStr = "${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}";
+    if (impactScore >= 5000) {
+      tierName = "PLATINUM";
+      tierTitle = "National Hero";
+      tierDesc = "You are in the top 1% of supporters this year.";
+      badgeColor = const Color(0xFF22D3EE);
+      bgColor = const Color(0xFF164E63);
+    } else if (impactScore >= 1000) {
+      tierName = "GOLD";
+      tierTitle = "Community Pillar";
+      tierDesc = "You are in the top 10% of Malaysian supporters.";
+      badgeColor = const Color(0xFF34D399);
+      bgColor = const Color(0xFF064E3B);
+    } else if (impactScore >= 200) {
+      tierName = "SILVER";
+      tierTitle = "Generous Giver";
+      tierDesc = "A consistent beacon of hope for communities.";
+      badgeColor = const Color(0xFF94A3B8);
+      bgColor = const Color(0xFF1E293B);
     }
 
-    String impactText = isItem ? (data['itemName'] ?? "Donated Items") : "RM ${data['amount']}";
-
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kSlate100),
-      ),
+      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              Text("PHILANTHROPY TIER", style: TextStyle(color: badgeColor, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: isItem ? Colors.orange.withOpacity(0.1) : kEmerald.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
-                child: Text(isItem ? "ITEM" : "MONETARY", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isItem ? Colors.orange : kEmerald)),
-              ),
-              Text(dateStr, style: const TextStyle(color: kSlate400, fontSize: 12)),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: badgeColor, borderRadius: BorderRadius.circular(8)),
+                child: Text(tierName, style: TextStyle(color: bgColor, fontSize: 10, fontWeight: FontWeight.w900)),
+              )
             ],
           ),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 3,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("TARGET PROJECT", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: kSlate400)),
-                    const SizedBox(height: 2),
-                    Text(data['project'] ?? "Relief Project", style: const TextStyle(fontWeight: FontWeight.w800, color: kSlate800)),
-                  ],
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("NGO", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: kSlate400)),
-                    const SizedBox(height: 2),
-                    Text(data['ngoName'] ?? "MERCY Malaysia", style: const TextStyle(color: kSlate500, fontSize: 13)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Divider(color: kSlate100, height: 1),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("IMPACT", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: kSlate400)),
-                    const SizedBox(height: 2),
-                    Text(impactText, style: const TextStyle(fontWeight: FontWeight.w900, color: kEmerald, fontSize: 16)),
-                  ],
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Certificate generated and saved to your device."), backgroundColor: kSlate800),
-                  );
-                },
-                icon: const Icon(LucideIcons.download, size: 14),
-                label: const Text("Certificate", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kSlate800,
-                  side: const BorderSide(color: kSlate300),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-              ),
-            ],
-          )
+          const SizedBox(height: 8),
+          Text(tierTitle, style: GoogleFonts.inter(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+          Text(tierDesc, style: const TextStyle(color: Colors.white70, fontSize: 12)),
         ],
       ),
     );
   }
-}
 
+  DataRow _buildDataRow(BuildContext context, Map<String, dynamic> data, String fetchedCategory) {
+    bool isMoney = data['type'] == 'money';
+
+    String dateStr = "N/A";
+    if (data['timestamp'] != null) {
+      DateTime d = (data['timestamp'] as Timestamp).toDate();
+      dateStr = "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
+    }
+
+    String location = data['target'] ?? "General Location";
+    String dynamicCause = "$location, $fetchedCategory";
+
+    String impactText = isMoney
+        ? "RM ${(data['amount'] as num? ?? 0.0).toStringAsFixed(2)}"
+        : "${data['quantity'] ?? '1'}x ${data['itemName'] ?? 'Item'}";
+
+    return DataRow(cells: [
+      DataCell(Text(dateStr)),
+      DataCell(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: (isMoney ? kEmerald : kBlueBrand).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            isMoney ? "MONEY" : "ITEM",
+            style: TextStyle(color: isMoney ? kEmerald : kBlueBrand, fontSize: 10, fontWeight: FontWeight.w900),
+          ),
+        ),
+      ),
+      DataCell(Text(dynamicCause, style: const TextStyle(fontWeight: FontWeight.w600))),
+      DataCell(Text(data['ngo'] ?? "MERCY Malaysia", style: const TextStyle(color: kSlate500))),
+      DataCell(Text(impactText, style: const TextStyle(fontWeight: FontWeight.bold))),
+      DataCell(
+        ElevatedButton.icon(
+          onPressed: () => _downloadCertificate(context, data, dynamicCause, impactText, dateStr),
+          icon: const Icon(LucideIcons.download, size: 14, color: kSlate600),
+          label: const Text("Certificate", style: TextStyle(color: kSlate800, fontSize: 12, fontWeight: FontWeight.w600)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: kSlate50,
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: kSlate100)),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  // Import this at the top: import 'package:share_plus/share_plus.dart';
+
+  Future<void> _downloadCertificate(BuildContext context, Map<String, dynamic> data, String cause, String impact, String date) async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        build: (pw.Context context) => pw.Center(
+          child: pw.Column(
+            mainAxisAlignment: pw.MainAxisAlignment.center,
+            children: [
+              pw.Text("KitaCare AI", style: pw.TextStyle(fontSize: 40, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 20),
+              pw.Text("CERTIFICATE OF DONATION", style: pw.TextStyle(fontSize: 24)),
+              pw.Divider(),
+              pw.SizedBox(height: 20),
+              pw.Text("Presented to a KitaCare Donor"),
+              pw.SizedBox(height: 10),
+              pw.Text("Cause: $cause"),
+              pw.Text("Impact: $impact"),
+              pw.Text("Date: $date"),
+              pw.SizedBox(height: 40),
+              pw.Text("Thank you for your kindness!", style: pw.TextStyle(fontStyle: pw.FontStyle.italic)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // 1. Get a safe directory for storing the file
+      final directory = await getApplicationDocumentsDirectory(); //
+      final filePath = "${directory.path}/KitaCare_Certificate_${DateTime.now().millisecondsSinceEpoch}.pdf";
+      final file = File(filePath);
+
+      // 2. Save the PDF bytes
+      await file.writeAsBytes(await pdf.save());
+
+      // 3. Open the file using open_filex (it handles the content:// URI internally)
+      final result = await OpenFilex.open(filePath); //
+
+      if (result.type != ResultType.done) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Could not open file: ${result.message}"))
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e"))
+      );
+    }
+  }
+}
