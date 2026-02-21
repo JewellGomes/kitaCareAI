@@ -7,7 +7,8 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'dart:convert'; // For parsing AI JSON
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-
+import 'package:image_picker/image_picker.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 // Ensure you have run 'dart pub global run flutterfire_cli:flutterfire configure'
 import 'firebase_options.dart';
 import 'package:syncfusion_flutter_maps/maps.dart';
@@ -26,6 +27,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart'; // Use open_filex
 import 'package:pdf/widgets.dart' as pw;
+import 'package:intl/intl.dart';
 
 // ==========================================
 // 1. CONFIG & THEME
@@ -104,7 +106,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
     );
   }
 
-  // --- UPDATED AUTH LOGIC WITH ROLE PROTECTION ---
+  // --- UPDATED AUTH LOGIC WITH ROLE PROTECTION & SIGNUP ---
   Future<void> _handleAuth() async {
     if (_emailController.text.isEmpty || _passController.text.isEmpty) {
       _showError("Please fill in all fields.");
@@ -114,15 +116,42 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
     try {
       if (view == 'signup') {
-        // ... (Keep your existing sign-up logic here)
+        // ==========================================
+        // 1. SIGN UP LOGIC
+        // ==========================================
+        UserCredential userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passController.text.trim(),
+        );
+
+        String userName = _nameController.text.trim();
+        if (userName.isEmpty) userName = "New User";
+
+        // Save the user data (including their selected role) to Firestore
+        await FirebaseFirestore.instance.collection('users').doc(userCred.user!.uid).set({
+          'name': userName,
+          'email': _emailController.text.trim(),
+          'role': selectedRole, // This saves 'donor', 'ngo', or 'courier'
+          'createdAt': FieldValue.serverTimestamp(),
+          // Default stats used by the Donor Dashboard
+          'walletBalance': 0.0,
+          'impactValue': 0.0,
+          'livesTouched': 0,
+        });
+
+        // Navigate into the app
+        _navigateToApp(userName);
+
       } else {
-        // 1. SIGN IN
+        // ==========================================
+        // 2. LOGIN LOGIC
+        // ==========================================
         UserCredential userCred = await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passController.text.trim(),
         );
 
-        // 2. FETCH ROLE FROM FIRESTORE
+        // Fetch Role from Firestore
         DocumentSnapshot doc = await FirebaseFirestore.instance
             .collection('users')
             .doc(userCred.user!.uid)
@@ -131,7 +160,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
         if (doc.exists) {
           String dbRole = doc['role']; // The role saved in Database
 
-          // 3. SECURITY CHECK: Compare DB Role with Selected UI Role
+          // SECURITY CHECK: Compare DB Role with Selected UI Role
           if (dbRole != selectedRole) {
             // Role Mismatch! Logout immediately.
             await FirebaseAuth.instance.signOut();
@@ -145,8 +174,10 @@ class _AuthWrapperState extends State<AuthWrapper> {
       }
     } on FirebaseAuthException catch (e) {
       _showError(e.message ?? "Authentication failed.");
+    } catch (e) {
+      _showError("An error occurred: $e");
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -324,6 +355,18 @@ class _AuthWrapperState extends State<AuthWrapper> {
           kBlue,
               () => setState(() => selectedRole = 'ngo'),
           isSelected: selectedRole == 'ngo',
+        ),
+
+        const SizedBox(height: 32),
+
+        // NEW: COURIER LOGISTICS BUTTON
+        _roleBtn(
+          "Logistics Courier",
+          "Manage pickups & drop-offs",
+          LucideIcons.truck,
+          Colors.orange.shade700,
+              () => setState(() => selectedRole = 'courier'),
+          isSelected: selectedRole == 'courier',
         ),
 
         const SizedBox(height: 32),
@@ -583,72 +626,457 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  // @override
+  // Widget build(BuildContext context) {
+  //   final themeColor = widget.role == 'ngo' ? kBlue : kEmerald;
+  //
+  //   final List<Widget> pages = [
+  //     // 1. PASS THE CONTROLLER HERE
+  //     DonorDashboard(
+  //       userName: widget.userName,
+  //       scrollController: _dashboardScrollController,
+  //     ),
+  //
+  //     // 2. UPDATE THE onTopUp FUNCTION
+  //     ReliefMap(
+  //       onTopUp: () {
+  //         // Switch to the Dashboard tab (index 0)
+  //         setState(() => _index = 0);
+  //
+  //         // Wait 300ms for the Dashboard to build, then scroll to the bottom
+  //         Future.delayed(const Duration(milliseconds: 300), () {
+  //           if (_dashboardScrollController.hasClients) {
+  //             _dashboardScrollController.animateTo(
+  //               _dashboardScrollController.position.maxScrollExtent,
+  //               duration: const Duration(milliseconds: 500),
+  //               curve: Curves.easeOut,
+  //             );
+  //           }
+  //         });
+  //       },
+  //     ),
+  //
+  //     const AiAdvisorPage(),
+  //     const MyImpactPage(),
+  //   ];
+  //
+  //   return Scaffold(
+  //     appBar: AppBar(
+  //       backgroundColor: Colors.white,
+  //       elevation: 0,
+  //       centerTitle: false,
+  //       title: _buildBrandLogo(), // Use the custom logo widget
+  //       actions: [
+  //         Padding(
+  //           padding: const EdgeInsets.only(right: 8.0),
+  //           child: IconButton(
+  //             onPressed: () {
+  //               Navigator.push(
+  //                 context,
+  //                 MaterialPageRoute(builder: (context) => ProfileScreen(userName: widget.userName)),
+  //               );
+  //             },
+  //             icon: Container(
+  //               padding: const EdgeInsets.all(6),
+  //               decoration: BoxDecoration(
+  //                 color: kSlate50,
+  //                 shape: BoxShape.circle,
+  //                 border: Border.all(color: kSlate100),
+  //               ),
+  //               child: const Icon(LucideIcons.user, color: kSlate800, size: 20),
+  //             ),
+  //           ),
+  //         ),
+  //         // Optional: A quick logout button next to profile
+  //         IconButton(
+  //           onPressed: () async {
+  //             await FirebaseAuth.instance.signOut();
+  //             // THIS IS THE FIX: Clear everything and go back to selection
+  //             if (!context.mounted) return;
+  //             Navigator.of(context).pushAndRemoveUntil(
+  //               MaterialPageRoute(builder: (context) => const AuthWrapper()),
+  //                   (route) => false,
+  //             );
+  //           },
+  //           icon: const Icon(LucideIcons.logOut, color: Colors.redAccent, size: 20),
+  //         ),
+  //       ],
+  //     ),
+  //     body: pages[_index],
+  //     bottomNavigationBar: Container(
+  //       decoration: BoxDecoration(
+  //         color: Colors.white,
+  //         border: Border(top: BorderSide(color: kSlate100, width: 1)),
+  //       ),
+  //       child: BottomNavigationBar(
+  //         currentIndex: _index,
+  //         onTap: (v) => setState(() => _index = v),
+  //         selectedItemColor: themeColor,
+  //         unselectedItemColor: kSlate400,
+  //         backgroundColor: Colors.white,
+  //         elevation: 0,
+  //         type: BottomNavigationBarType.fixed,
+  //         items: const [
+  //           BottomNavigationBarItem(icon: Icon(LucideIcons.layoutDashboard), label: "Dashboard"),
+  //           BottomNavigationBarItem(icon: Icon(LucideIcons.map), label: "Relief Map"),
+  //           BottomNavigationBarItem(icon: Icon(LucideIcons.messageSquare), label: "AI Advisor"),
+  //           BottomNavigationBarItem(icon: Icon(LucideIcons.barChart3), label: "My Impact"),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
+  // @override
+  // Widget build(BuildContext context) {
+  //   final isNgo = widget.role == 'ngo';
+  //   final themeColor = isNgo ? kBlue : kEmerald;
+  //   final isCourier = widget.role == 'courier';
+  //
+  //   // 1. DYNAMIC PAGES BASED ON ROLE
+  //   final List<Widget> pages = isNgo
+  //       ? [
+  //     const NGODashboard(), // NGO's 1st Tab: Mission Hub
+  //     const ReliefMap(),    // NGO's 2nd Tab: Relief Map
+  //     const AiAdvisorPage(role: 'ngo'), // NGO's 3rd Tab: NGO AI
+  //     const ReliefMap(), // NGO's 4th Tab: Logistics Data
+  //   ]
+  //       : [
+  //     DonorDashboard(
+  //       userName: widget.userName,
+  //       scrollController: _dashboardScrollController,
+  //     ),
+  //     ReliefMap(
+  //       onTopUp: () {
+  //         setState(() => _index = 0);
+  //         Future.delayed(const Duration(milliseconds: 300), () {
+  //           if (_dashboardScrollController.hasClients) {
+  //             _dashboardScrollController.animateTo(
+  //               _dashboardScrollController.position.maxScrollExtent,
+  //               duration: const Duration(milliseconds: 500),
+  //               curve: Curves.easeOut,
+  //             );
+  //           }
+  //         });
+  //       },
+  //     ),
+  //     const AiAdvisorPage(role: 'donor'),
+  //     const MyImpactPage(),
+  //   ];
+  //
+  //   // 2. DYNAMIC BOTTOM NAV ITEMS BASED ON ROLE
+  //   final List<BottomNavigationBarItem> navItems = isNgo
+  //       ? const [
+  //     BottomNavigationBarItem(icon: Icon(LucideIcons.layoutDashboard), label: "Mission Hub"),
+  //     BottomNavigationBarItem(icon: Icon(LucideIcons.map), label: "Relief Map"),
+  //     BottomNavigationBarItem(icon: Icon(LucideIcons.messageSquare), label: "AI Advisor"),
+  //     BottomNavigationBarItem(icon: Icon(LucideIcons.barChart3), label: "Logistics Data"),
+  //   ]
+  //       : const [
+  //     BottomNavigationBarItem(icon: Icon(LucideIcons.layoutDashboard), label: "Dashboard"),
+  //     BottomNavigationBarItem(icon: Icon(LucideIcons.map), label: "Relief Map"),
+  //     BottomNavigationBarItem(icon: Icon(LucideIcons.messageSquare), label: "AI Advisor"),
+  //     BottomNavigationBarItem(icon: Icon(LucideIcons.barChart3), label: "My Impact"),
+  //   ];
+  //
+  //   return Scaffold(
+  //     appBar: AppBar(
+  //       backgroundColor: Colors.white,
+  //       elevation: 0,
+  //       centerTitle: false,
+  //       title: _buildBrandLogo(),
+  //       actions: [
+  //         // 1. NEW: NOTIFICATION BELL
+  //         const Center(
+  //           child: Padding(
+  //             padding: EdgeInsets.only(right: 8.0),
+  //             child: NotificationBell(), // <--- ADDED HERE
+  //           ),
+  //         ),
+  //
+  //         // 2. EXISTING: PROFILE BUTTON
+  //         Padding(
+  //           padding: const EdgeInsets.only(right: 8.0),
+  //           child: IconButton(
+  //             onPressed: () {
+  //               Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileScreen(userName: widget.userName)));
+  //             },
+  //             icon: Container(
+  //               padding: const EdgeInsets.all(6),
+  //               decoration: BoxDecoration(color: kSlate50, shape: BoxShape.circle, border: Border.all(color: kSlate100)),
+  //               child: const Icon(LucideIcons.user, color: kSlate800, size: 20),
+  //             ),
+  //           ),
+  //         ),
+  //
+  //         // 3. EXISTING: LOGOUT BUTTON
+  //         IconButton(
+  //           onPressed: () async {
+  //             await FirebaseAuth.instance.signOut();
+  //             if (!context.mounted) return;
+  //             Navigator.of(context).pushAndRemoveUntil(
+  //               MaterialPageRoute(builder: (context) => const AuthWrapper()),
+  //                   (route) => false,
+  //             );
+  //           },
+  //           icon: const Icon(LucideIcons.logOut, color: Colors.redAccent, size: 20),
+  //         ),
+  //         const SizedBox(width: 8), // Small padding at the very edge
+  //       ],
+  //     ),
+  //     body: pages[_index],
+  //     bottomNavigationBar: Container(
+  //       decoration: const BoxDecoration(
+  //         color: Colors.white,
+  //         border: Border(top: BorderSide(color: kSlate100, width: 1)),
+  //       ),
+  //       child: BottomNavigationBar(
+  //         currentIndex: _index,
+  //         onTap: (v) => setState(() => _index = v),
+  //         selectedItemColor: themeColor,
+  //         unselectedItemColor: kSlate400,
+  //         backgroundColor: Colors.white,
+  //         elevation: 0,
+  //         type: BottomNavigationBarType.fixed,
+  //         items: navItems,
+  //       ),
+  //     ),
+  //   );
+  // }
+  // @override
+  // Widget build(BuildContext context) {
+  //   final isNgo = widget.role == 'ngo';
+  //   final isCourier = widget.role == 'courier';
+  //
+  //   // Dynamic Theme Color: NGO is Blue, Courier is Orange, Donor is Emerald
+  //   final themeColor = isNgo ? kBlue : (isCourier ? Colors.orange.shade700 : kEmerald);
+  //
+  //   // 1. DYNAMIC PAGES & NAV ITEMS BASED ON ROLE
+  //   List<Widget> pages;
+  //   List<BottomNavigationBarItem> navItems;
+  //
+  //   if (isNgo) {
+  //     pages = [
+  //       const NGODashboard(), // NGO's 1st Tab: Mission Hub
+  //       const ReliefMap(),    // NGO's 2nd Tab: Relief Map
+  //       const AiAdvisorPage(role: 'ngo'), // NGO's 3rd Tab: NGO AI
+  //       const ReliefMap(), // NGO's 4th Tab: Logistics Data
+  //     ];
+  //     navItems = const [
+  //       BottomNavigationBarItem(icon: Icon(LucideIcons.layoutDashboard), label: "Mission Hub"),
+  //       BottomNavigationBarItem(icon: Icon(LucideIcons.map), label: "Relief Map"),
+  //       BottomNavigationBarItem(icon: Icon(LucideIcons.messageSquare), label: "AI Advisor"),
+  //       BottomNavigationBarItem(icon: Icon(LucideIcons.barChart3), label: "Logistics"),
+  //     ];
+  //   } else if (isCourier) {
+  //     // --- COURIER DASHBOARD OVERRIDE ---
+  //     pages = [
+  //       const CourierDashboard(), // The new scanner hub
+  //       const ReliefMap(),        // Allow them to see the map
+  //     ];
+  //     navItems = const [
+  //       BottomNavigationBarItem(icon: Icon(LucideIcons.scanLine), label: "Scanner Hub"),
+  //       BottomNavigationBarItem(icon: Icon(LucideIcons.map), label: "Delivery Map"),
+  //     ];
+  //   } else {
+  //     // --- DEFAULT DONOR DASHBOARD ---
+  //     pages = [
+  //       DonorDashboard(
+  //         userName: widget.userName,
+  //         scrollController: _dashboardScrollController,
+  //       ),
+  //       ReliefMap(
+  //         onTopUp: () {
+  //           setState(() => _index = 0);
+  //           Future.delayed(const Duration(milliseconds: 300), () {
+  //             if (_dashboardScrollController.hasClients) {
+  //               _dashboardScrollController.animateTo(
+  //                 _dashboardScrollController.position.maxScrollExtent,
+  //                 duration: const Duration(milliseconds: 500),
+  //                 curve: Curves.easeOut,
+  //               );
+  //             }
+  //           });
+  //         },
+  //       ),
+  //       const AiAdvisorPage(role: 'donor'),
+  //       const MyImpactPage(),
+  //     ];
+  //     navItems = const [
+  //       BottomNavigationBarItem(icon: Icon(LucideIcons.layoutDashboard), label: "Dashboard"),
+  //       BottomNavigationBarItem(icon: Icon(LucideIcons.map), label: "Relief Map"),
+  //       BottomNavigationBarItem(icon: Icon(LucideIcons.messageSquare), label: "AI Advisor"),
+  //       BottomNavigationBarItem(icon: Icon(LucideIcons.barChart3), label: "My Impact"),
+  //     ];
+  //   }
+  //
+  //   // Safety check: If you switch from a role with 4 tabs to a role with 2 tabs, prevent crashes.
+  //   int safeIndex = _index >= pages.length ? 0 : _index;
+  //
+  //   return Scaffold(
+  //     appBar: AppBar(
+  //       backgroundColor: Colors.white,
+  //       elevation: 0,
+  //       centerTitle: false,
+  //       title: _buildBrandLogo(),
+  //       actions: [
+  //         // Hide Notifications and Profile for the Courier to keep it clean
+  //         if (!isCourier) ...[
+  //           const Center(
+  //             child: Padding(
+  //               padding: EdgeInsets.only(right: 8.0),
+  //               child: NotificationBell(),
+  //             ),
+  //           ),
+  //           Padding(
+  //             padding: const EdgeInsets.only(right: 8.0),
+  //             child: IconButton(
+  //               onPressed: () {
+  //                 Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileScreen(userName: widget.userName)));
+  //               },
+  //               icon: Container(
+  //                 padding: const EdgeInsets.all(6),
+  //                 decoration: BoxDecoration(color: kSlate50, shape: BoxShape.circle, border: Border.all(color: kSlate100)),
+  //                 child: const Icon(LucideIcons.user, color: kSlate800, size: 20),
+  //               ),
+  //             ),
+  //           ),
+  //         ],
+  //
+  //         // Keep Logout visible for EVERYONE so you can switch roles during demo easily!
+  //         IconButton(
+  //           onPressed: () async {
+  //             await FirebaseAuth.instance.signOut();
+  //             if (!context.mounted) return;
+  //             Navigator.of(context).pushAndRemoveUntil(
+  //               MaterialPageRoute(builder: (context) => const AuthWrapper()),
+  //                   (route) => false,
+  //             );
+  //           },
+  //           icon: const Icon(LucideIcons.logOut, color: Colors.redAccent, size: 20),
+  //         ),
+  //         const SizedBox(width: 8),
+  //       ],
+  //     ),
+  //     body: pages[safeIndex],
+  //     bottomNavigationBar: Container(
+  //       decoration: const BoxDecoration(
+  //         color: Colors.white,
+  //         border: Border(top: BorderSide(color: kSlate100, width: 1)),
+  //       ),
+  //       child: BottomNavigationBar(
+  //         currentIndex: safeIndex,
+  //         onTap: (v) => setState(() => _index = v),
+  //         selectedItemColor: themeColor,
+  //         unselectedItemColor: kSlate400,
+  //         backgroundColor: Colors.white,
+  //         elevation: 0,
+  //         type: BottomNavigationBarType.fixed,
+  //         items: navItems,
+  //       ),
+  //     ),
+  //   );
+  // }
+// --- PASTE THIS INSIDE _AppShellState ---
   @override
   Widget build(BuildContext context) {
-    final themeColor = widget.role == 'ngo' ? kBlue : kEmerald;
+    final isNgo = widget.role == 'ngo';
+    final isCourier = widget.role == 'courier';
 
-    final List<Widget> pages = [
-      // 1. PASS THE CONTROLLER HERE
-      DonorDashboard(
-        userName: widget.userName,
-        scrollController: _dashboardScrollController,
-      ),
+    // Dynamic Theme Color: NGO is Blue, Courier is Orange, Donor is Emerald
+    final themeColor = isNgo ? kBlue : (isCourier ? Colors.orange.shade700 : kEmerald);
 
-      // 2. UPDATE THE onTopUp FUNCTION
-      ReliefMap(
-        onTopUp: () {
-          // Switch to the Dashboard tab (index 0)
-          setState(() => _index = 0);
+    // 1. DYNAMIC PAGES & NAV ITEMS BASED ON ROLE
+    List<Widget> pages;
+    List<BottomNavigationBarItem> navItems = [];
 
-          // Wait 300ms for the Dashboard to build, then scroll to the bottom
-          Future.delayed(const Duration(milliseconds: 300), () {
-            if (_dashboardScrollController.hasClients) {
-              _dashboardScrollController.animateTo(
-                _dashboardScrollController.position.maxScrollExtent,
-                duration: const Duration(milliseconds: 500),
-                curve: Curves.easeOut,
-              );
-            }
-          });
-        },
-      ),
+    if (isNgo) {
+      pages = [
+        const NGODashboard(), // NGO's 1st Tab: Mission Hub
+        const ReliefMap(),    // NGO's 2nd Tab: Relief Map
+        const AiAdvisorPage(role: 'ngo'), // NGO's 3rd Tab: NGO AI
+        const ReliefMap(), // NGO's 4th Tab: Logistics Data
+      ];
+      navItems = const [
+        BottomNavigationBarItem(icon: Icon(LucideIcons.layoutDashboard), label: "Mission Hub"),
+        BottomNavigationBarItem(icon: Icon(LucideIcons.map), label: "Relief Map"),
+        BottomNavigationBarItem(icon: Icon(LucideIcons.messageSquare), label: "AI Advisor"),
+        BottomNavigationBarItem(icon: Icon(LucideIcons.barChart3), label: "Logistics"),
+      ];
+    } else if (isCourier) {
+      // --- COURIER DASHBOARD OVERRIDE ---
+      pages = [
+        const CourierDashboard(), // ONLY the scanner hub
+      ];
+      // navItems remains empty because we hide the bottom bar below!
+    } else {
+      // --- DEFAULT DONOR DASHBOARD ---
+      pages = [
+        DonorDashboard(
+          userName: widget.userName,
+          scrollController: _dashboardScrollController,
+        ),
+        ReliefMap(
+          onTopUp: () {
+            setState(() => _index = 0);
+            Future.delayed(const Duration(milliseconds: 300), () {
+              if (_dashboardScrollController.hasClients) {
+                _dashboardScrollController.animateTo(
+                  _dashboardScrollController.position.maxScrollExtent,
+                  duration: const Duration(milliseconds: 500),
+                  curve: Curves.easeOut,
+                );
+              }
+            });
+          },
+        ),
+        const AiAdvisorPage(role: 'donor'),
+        const MyImpactPage(),
+      ];
+      navItems = const [
+        BottomNavigationBarItem(icon: Icon(LucideIcons.layoutDashboard), label: "Dashboard"),
+        BottomNavigationBarItem(icon: Icon(LucideIcons.map), label: "Relief Map"),
+        BottomNavigationBarItem(icon: Icon(LucideIcons.messageSquare), label: "AI Advisor"),
+        BottomNavigationBarItem(icon: Icon(LucideIcons.barChart3), label: "My Impact"),
+      ];
+    }
 
-      const AiAdvisorPage(),
-      const MyImpactPage(),
-    ];
+    // Safety check: If you switch from a role with 4 tabs to a role with 1 tab, prevent crashes.
+    int safeIndex = _index >= pages.length ? 0 : _index;
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: false,
-        title: _buildBrandLogo(), // Use the custom logo widget
+        title: _buildBrandLogo(),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: IconButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => ProfileScreen(userName: widget.userName)),
-                );
-              },
-              icon: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: kSlate50,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: kSlate100),
-                ),
-                child: const Icon(LucideIcons.user, color: kSlate800, size: 20),
+          // Hide Notifications and Profile for the Courier to keep it clean
+          if (!isCourier) ...[
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.only(right: 8.0),
+                child: NotificationBell(),
               ),
             ),
-          ),
-          // Optional: A quick logout button next to profile
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: IconButton(
+                onPressed: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileScreen(userName: widget.userName)));
+                },
+                icon: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(color: kSlate50, shape: BoxShape.circle, border: Border.all(color: kSlate100)),
+                  child: const Icon(LucideIcons.user, color: kSlate800, size: 20),
+                ),
+              ),
+            ),
+          ],
+
+          // Keep Logout visible for EVERYONE so you can switch roles during demo easily!
           IconButton(
             onPressed: () async {
               await FirebaseAuth.instance.signOut();
-              // THIS IS THE FIX: Clear everything and go back to selection
               if (!context.mounted) return;
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (context) => const AuthWrapper()),
@@ -657,34 +1085,202 @@ class _AppShellState extends State<AppShell> {
             },
             icon: const Icon(LucideIcons.logOut, color: Colors.redAccent, size: 20),
           ),
+          const SizedBox(width: 8),
         ],
       ),
-      body: pages[_index],
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
+      body: pages[safeIndex],
+
+      // If it is the courier, return 'null' so the bottom bar disappears completely!
+      bottomNavigationBar: isCourier
+          ? null
+          : Container(
+        decoration: const BoxDecoration(
           color: Colors.white,
           border: Border(top: BorderSide(color: kSlate100, width: 1)),
         ),
         child: BottomNavigationBar(
-          currentIndex: _index,
+          currentIndex: safeIndex,
           onTap: (v) => setState(() => _index = v),
           selectedItemColor: themeColor,
           unselectedItemColor: kSlate400,
           backgroundColor: Colors.white,
           elevation: 0,
           type: BottomNavigationBarType.fixed,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(LucideIcons.layoutDashboard), label: "Dashboard"),
-            BottomNavigationBarItem(icon: Icon(LucideIcons.map), label: "Relief Map"),
-            BottomNavigationBarItem(icon: Icon(LucideIcons.messageSquare), label: "AI Advisor"),
-            BottomNavigationBarItem(icon: Icon(LucideIcons.barChart3), label: "My Impact"),
-          ],
+          items: navItems,
         ),
       ),
     );
   }
 }
 
+// class ProfileScreen extends StatelessWidget {
+//   final String userName;
+//   const ProfileScreen({super.key, required this.userName});
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     final user = FirebaseAuth.instance.currentUser;
+//
+//     return Scaffold(
+//       appBar: AppBar(
+//         title: const Text("My Profile", style: TextStyle(fontWeight: FontWeight.bold)),
+//         elevation: 0,
+//         backgroundColor: Colors.white,
+//         foregroundColor: kSlate800,
+//       ),
+//       body: SingleChildScrollView(
+//         padding: const EdgeInsets.all(24),
+//         child: Column(
+//           children: [
+//             // User Avatar & Name
+//             CircleAvatar(
+//               radius: 40,
+//               backgroundColor: kEmerald.withOpacity(0.1),
+//               child: Text(userName[0], style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: kEmerald)),
+//             ),
+//             const SizedBox(height: 16),
+//             Text(userName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+//             Text(user?.email ?? "email@example.com", style: const TextStyle(color: kSlate400)),
+//
+//             const SizedBox(height: 40),
+//
+//             // Settings List
+//           // FIX FOR EMAIL
+//             _profileOption(
+//               icon: LucideIcons.mail,
+//               title: "Update Email",
+//               onTap: () => _showUpdateDialog(
+//                 context,
+//                 "Email",
+//                     (newEmail) async {
+//                   final user = FirebaseAuth.instance.currentUser;
+//
+//                   // 1. MANUAL UNIQUENESS CHECK: Check if email exists in Firestore
+//                   final result = await FirebaseFirestore.instance
+//                       .collection('users')
+//                       .where('email', isEqualTo: newEmail)
+//                       .get();
+//
+//                   if (result.docs.isNotEmpty) {
+//                     // Throw a custom error so the catch block handles it
+//                     throw FirebaseAuthException(
+//                         code: 'email-already-in-use',
+//                         message: 'This email is already registered by another user.'
+//                     );
+//                   }
+//
+//                   // 2. THE UPDATE: Since updateEmail is deleted from the SDK,
+//                   // we MUST use verifyBeforeUpdateEmail.
+//                   // Note: This IS the only method currently available in the SDK.
+//                   await user?.verifyBeforeUpdateEmail(newEmail);
+//
+//                   // 3. SYNC TO FIRESTORE
+//                   await FirebaseFirestore.instance
+//                       .collection('users')
+//                       .doc(user?.uid)
+//                       .update({'email': newEmail});
+//                 },
+//               ),
+//             ),
+//
+//           // FIX FOR PASSWORD
+//           _profileOption(
+//             icon: LucideIcons.lock,
+//             title: "Change Password",
+//             onTap: () => _showUpdateDialog(
+//               context,
+//               "Password",
+//                   (val) async => await user?.updatePassword(val), // Keep this but make it async
+//             ),
+//           ),
+//             const Divider(height: 40),
+//             _profileOption(
+//               icon: LucideIcons.logOut,
+//               title: "Logout",
+//               color: Colors.red,
+//               onTap: () async {
+//                 await FirebaseAuth.instance.signOut();
+//                 // THIS IS THE FIX: Clear everything and go back to selection
+//                 if (!context.mounted) return;
+//                 Navigator.of(context).pushAndRemoveUntil(
+//                   MaterialPageRoute(builder: (context) => const AuthWrapper()),
+//                       (route) => false,
+//                 );
+//               },
+//             ),
+//           ],
+//         ),
+//       ),
+//     );
+//   }
+//
+//   Widget _profileOption({required IconData icon, required String title, required VoidCallback onTap, Color? color}) {
+//     return ListTile(
+//       onTap: onTap,
+//       leading: Icon(icon, color: color ?? kSlate800, size: 20),
+//       title: Text(title, style: TextStyle(fontWeight: FontWeight.w600, color: color ?? kSlate800)),
+//       trailing: const Icon(LucideIcons.chevronRight, size: 16, color: kSlate400),
+//       contentPadding: const EdgeInsets.symmetric(vertical: 4),
+//     );
+//   }
+//
+//   // Generic Dialog for Updates
+//   // Update the signature to: Future<void> Function(String)
+//   void _showUpdateDialog(BuildContext context, String type, Future<void> Function(String) onUpdate) {
+//     final controller = TextEditingController();
+//     showDialog(
+//       context: context,
+//       builder: (context) => AlertDialog(
+//         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+//         title: Text("Update $type", style: const TextStyle(fontWeight: FontWeight.bold)),
+//         content: TextField(
+//           controller: controller,
+//           autofocus: true,
+//           decoration: InputDecoration(
+//             hintText: "Enter new $type",
+//             filled: true,
+//             fillColor: kSlate50,
+//             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+//           ),
+//           obscureText: type == "Password",
+//         ),
+//         actions: [
+//           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+//           ElevatedButton(
+//             style: ElevatedButton.styleFrom(backgroundColor: kEmerald, foregroundColor: Colors.white),
+//             onPressed: () async {
+//               try {
+//                 String val = controller.text.trim();
+//                 if (val.isEmpty) return;
+//
+//                 await onUpdate(val);
+//
+//                 Navigator.pop(context);
+//
+//                 // Custom message based on type
+//                 String successMsg = type == "Email"
+//                     ? "Checking email... Link sent for verification."
+//                     : "Password updated!";
+//
+//                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(successMsg)));
+//               } on FirebaseAuthException catch (e) {
+//                 // This catches the 'email-already-in-use' error we threw manually
+//                 ScaffoldMessenger.of(context).showSnackBar(
+//                   SnackBar(content: Text(e.message ?? "An error occurred"), backgroundColor: Colors.redAccent),
+//                 );
+//               } catch (e) {
+//                 ScaffoldMessenger.of(context).showSnackBar(
+//                   SnackBar(content: Text("Error: $e"), backgroundColor: Colors.redAccent),
+//                 );
+//               }
+//             },
+//             child: const Text("Update"),
+//           )
+//         ],
+//       ),
+//     );
+//   }
+// }
 class ProfileScreen extends StatelessWidget {
   final String userName;
   const ProfileScreen({super.key, required this.userName});
@@ -708,7 +1304,7 @@ class ProfileScreen extends StatelessWidget {
             CircleAvatar(
               radius: 40,
               backgroundColor: kEmerald.withOpacity(0.1),
-              child: Text(userName[0], style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: kEmerald)),
+              child: Text(userName.isNotEmpty ? userName[0] : "?", style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: kEmerald)),
             ),
             const SizedBox(height: 16),
             Text(userName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
@@ -717,7 +1313,35 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 40),
 
             // Settings List
-          // FIX FOR EMAIL
+            _profileOption(
+              icon: LucideIcons.home,
+              title: "Update Registered Address",
+              onTap: () => _showUpdateDialog(
+                  context,
+                  "Address",
+                  // 1. UPDATE LOGIC
+                      (newAddress) async {
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user != null) {
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(user.uid)
+                          .update({'address': newAddress});
+                    }
+                  },
+                  // 2. NEW DELETE LOGIC
+                  onDelete: () async {
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user != null) {
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(user.uid)
+                          .update({'address': FieldValue.delete()}); // Erases the field entirely
+                    }
+                  }
+              ),
+            ),
+
             _profileOption(
               icon: LucideIcons.mail,
               title: "Update Email",
@@ -726,27 +1350,20 @@ class ProfileScreen extends StatelessWidget {
                 "Email",
                     (newEmail) async {
                   final user = FirebaseAuth.instance.currentUser;
-
-                  // 1. MANUAL UNIQUENESS CHECK: Check if email exists in Firestore
                   final result = await FirebaseFirestore.instance
                       .collection('users')
                       .where('email', isEqualTo: newEmail)
                       .get();
 
                   if (result.docs.isNotEmpty) {
-                    // Throw a custom error so the catch block handles it
+                    Navigator.pop(context);
                     throw FirebaseAuthException(
                         code: 'email-already-in-use',
                         message: 'This email is already registered by another user.'
                     );
                   }
 
-                  // 2. THE UPDATE: Since updateEmail is deleted from the SDK,
-                  // we MUST use verifyBeforeUpdateEmail.
-                  // Note: This IS the only method currently available in the SDK.
                   await user?.verifyBeforeUpdateEmail(newEmail);
-
-                  // 3. SYNC TO FIRESTORE
                   await FirebaseFirestore.instance
                       .collection('users')
                       .doc(user?.uid)
@@ -755,24 +1372,23 @@ class ProfileScreen extends StatelessWidget {
               ),
             ),
 
-          // FIX FOR PASSWORD
-          _profileOption(
-            icon: LucideIcons.lock,
-            title: "Change Password",
-            onTap: () => _showUpdateDialog(
-              context,
-              "Password",
-                  (val) async => await user?.updatePassword(val), // Keep this but make it async
+            _profileOption(
+              icon: LucideIcons.lock,
+              title: "Change Password",
+              onTap: () => _showUpdateDialog(
+                context,
+                "Password",
+                    (val) async => await user?.updatePassword(val),
+              ),
             ),
-          ),
             const Divider(height: 40),
+
             _profileOption(
               icon: LucideIcons.logOut,
               title: "Logout",
               color: Colors.red,
               onTap: () async {
                 await FirebaseAuth.instance.signOut();
-                // THIS IS THE FIX: Clear everything and go back to selection
                 if (!context.mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (context) => const AuthWrapper()),
@@ -796,60 +1412,200 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // Generic Dialog for Updates
-  // Update the signature to: Future<void> Function(String)
-  void _showUpdateDialog(BuildContext context, String type, Future<void> Function(String) onUpdate) {
-    final controller = TextEditingController();
+  // --- FULLY REDESIGNED UPDATE DIALOG WITH DELETE OPTION ---
+  void _showUpdateDialog(
+      BuildContext context,
+      String type,
+      Future<void> Function(String) onUpdate,
+      {Future<void> Function()? onDelete} // Optional Delete Function
+      ) {
+    final TextEditingController controller = TextEditingController();
+    bool isProcessing = false;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text("Update $type", style: const TextStyle(fontWeight: FontWeight.bold)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(
-            hintText: "Enter new $type",
-            filled: true,
-            fillColor: kSlate50,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-          ),
-          obscureText: type == "Password",
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: kEmerald, foregroundColor: Colors.white),
-            onPressed: () async {
-              try {
-                String val = controller.text.trim();
-                if (val.isEmpty) return;
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 1. CUSTOM HEADER
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: const BoxDecoration(
+                      color: kEmerald,
+                      borderRadius: BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Update $type",
+                                style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18),
+                              ),
+                              const Text(
+                                "PROFILE MANAGEMENT",
+                                style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.1),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () {
+                            if (!isProcessing) Navigator.pop(context);
+                          },
+                          icon: const Icon(LucideIcons.x, color: Colors.white, size: 20),
+                        )
+                      ],
+                    ),
+                  ),
 
-                await onUpdate(val);
+                  // 2. BODY CONTENT
+                  Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "NEW ${type.toUpperCase()}",
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 0.5),
+                        ),
+                        const SizedBox(height: 12),
 
-                Navigator.pop(context);
+                        // Formatted Text Field
+                        TextField(
+                          controller: controller,
+                          autofocus: true,
+                          obscureText: type == "Password",
+                          maxLines: type == "Address" ? 3 : 1,
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: kSlate800),
+                          decoration: InputDecoration(
+                            hintText: type == "Address" ? "Enter full street address" : "Enter new $type",
+                            hintStyle: const TextStyle(color: kSlate400, fontWeight: FontWeight.w400),
+                            filled: true,
+                            fillColor: kSlate50,
+                            contentPadding: const EdgeInsets.all(20),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: kSlate100, width: 2)),
+                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: kEmerald, width: 2)),
+                          ),
+                        ),
 
-                // Custom message based on type
-                String successMsg = type == "Email"
-                    ? "Checking email... Link sent for verification."
-                    : "Password updated!";
+                        const SizedBox(height: 32),
 
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(successMsg)));
-              } on FirebaseAuthException catch (e) {
-                // This catches the 'email-already-in-use' error we threw manually
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(e.message ?? "An error occurred"), backgroundColor: Colors.redAccent),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("Error: $e"), backgroundColor: Colors.redAccent),
-                );
-              }
-            },
-            child: const Text("Update"),
-          )
-        ],
-      ),
+                        // 3. MAIN SAVE BUTTON
+                        SizedBox(
+                          width: double.infinity,
+                          height: 56,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: kEmerald,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              elevation: 0,
+                            ),
+                            onPressed: isProcessing
+                                ? null
+                                : () async {
+                              String val = controller.text.trim();
+                              if (val.isEmpty) return; // Must type something to save
+
+                              setDialogState(() => isProcessing = true);
+
+                              try {
+                                await onUpdate(val);
+
+                                if (context.mounted) {
+                                  Navigator.pop(context);
+
+                                  String successMsg = "Updated successfully!";
+                                  if (type == "Email") successMsg = "Checking email... Link sent for verification.";
+                                  if (type == "Password") successMsg = "Password updated!";
+                                  if (type == "Address") successMsg = "Address saved successfully! Our logistics partners will use this for doorstep pick-ups.";
+
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                    content: Text(successMsg),
+                                    backgroundColor: kEmerald,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ));
+                                }
+                              } on FirebaseAuthException catch (e) {
+                                setDialogState(() => isProcessing = false);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(e.message ?? "An error occurred"), backgroundColor: Colors.redAccent),
+                                );
+                              } catch (e) {
+                                setDialogState(() => isProcessing = false);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text("Error: $e"), backgroundColor: Colors.redAccent),
+                                );
+                              }
+                            },
+                            child: isProcessing && controller.text.isNotEmpty
+                                ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                            )
+                                : const Text("Save Changes", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                          ),
+                        ),
+
+                        // 4. CONDITIONALLY RENDER REMOVE BUTTON
+                        if (onDelete != null) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 48,
+                            child: TextButton(
+                              style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                              onPressed: isProcessing ? null : () async {
+                                setDialogState(() => isProcessing = true);
+                                try {
+                                  await onDelete();
+
+                                  if (context.mounted) {
+                                    Navigator.pop(context);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text("$type removed successfully."),
+                                        backgroundColor: Colors.redAccent,
+                                        behavior: SnackBarBehavior.floating,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  setDialogState(() => isProcessing = false);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text("Error: $e"), backgroundColor: Colors.redAccent),
+                                  );
+                                }
+                              },
+                              child: Text("Remove $type", style: const TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ],
+
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -866,6 +1622,7 @@ class DonorDashboard extends StatelessWidget {
   Widget build(BuildContext context) {
     String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
 
+
     return StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
         builder: (context, userSnapshot) {
@@ -879,6 +1636,17 @@ class DonorDashboard extends StatelessWidget {
           String impact = impactScore.toStringAsFixed(2);
           String lives = userData?['livesTouched']?.toString() ?? "0";
           double balance = (userData?['walletBalance'] ?? 0.0).toDouble(); // NEW: BALANCE FIELD
+          double impactValue = (userData?['impactValue'] as num? ?? 0).toDouble();
+          double livesValue = (userData?['livesTouched'] as num? ?? 0).toDouble();
+          // Inside build:
+          // 2. Format Impact (This adds the 'RM' automatically)
+          String formattedImpact = NumberFormat.compactCurrency(
+            symbol: 'RM ',
+            decimalDigits: 0,
+          ).format(impactValue);
+
+// 3. Format Lives (Use the numeric value directly)
+          String formattedLives = NumberFormat.compact().format(livesValue);
 
           return SingleChildScrollView(
             controller: scrollController,
@@ -897,11 +1665,16 @@ class DonorDashboard extends StatelessWidget {
                 // 1. STATS ROW (Now includes Balance)
                 Row(
                   children: [
+                    // Wallet Balance - Keep 2 decimals for currency feel
                     _statBox("WALLET BALANCE", "RM ${balance.toStringAsFixed(2)}", kEmerald),
-                    const SizedBox(width: 8), // Smaller spacing to fit 3 cards
-                    _statBox("IMPACT VALUE", "RM $impact", kBlue),
                     const SizedBox(width: 8),
-                    _statBox("LIVES TOUCHED", "~$lives", const Color(0xFF6366F1)), // Indigo color for Lives
+
+                    // FIX: Use 'formattedImpact' instead of '_formatCompact'
+                    _statBox("IMPACT VALUE", formattedImpact, kBlue),
+                    const SizedBox(width: 8),
+
+                    // FIX: Use 'formattedLives' instead of '_formatCompact'
+                    _statBox("LIVES TOUCHED", "~$formattedLives", const Color(0xFF6366F1)),
                   ],
                 ),
 
@@ -1634,8 +2407,653 @@ class DonorDashboard extends StatelessWidget {
   }
 }
 
-class NGODashboard extends StatelessWidget {
+class NGODashboard extends StatefulWidget {
   const NGODashboard({super.key});
+
+  @override
+  State<NGODashboard> createState() => _NGODashboardState();
+}
+
+class _NGODashboardState extends State<NGODashboard> {
+  bool _isVerified = false;
+
+  void _onPinVerified() {
+    setState(() {
+      _isVerified = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // If verified, show the original operational dashboard.
+    // If not, show the new Secure Console PIN screen.
+    return _isVerified
+        ? const NGOOperationalDashboard()
+        : NGOSecureConsole(onVerified: _onPinVerified);
+  }
+}
+// ==========================================
+// NEW: COURIER LOGISTICS DASHBOARD
+// ==========================================
+// ==========================================
+// NEW: COURIER LOGISTICS DASHBOARD
+// ==========================================
+class CourierDashboard extends StatefulWidget {
+  const CourierDashboard({super.key});
+
+  @override
+  State<CourierDashboard> createState() => _CourierDashboardState();
+}
+
+class _CourierDashboardState extends State<CourierDashboard> {
+  final TextEditingController _qrController = TextEditingController();
+  bool _isProcessing = false;
+
+  // Simulate scanning by pulling data from Firebase based on QR String
+  Future<void> _processScan() async {
+    String qrData = _qrController.text.trim();
+    if (qrData.isEmpty) return;
+
+    setState(() => _isProcessing = true);
+
+    try {
+      // Look across ALL users for a donation with this specific QR code
+      var query = await FirebaseFirestore.instance
+          .collectionGroup('donations')
+          .where('qrCodeData', isEqualTo: qrData)
+          .get();
+
+      if (query.docs.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid QR Code. Package not found in system.")));
+        }
+        setState(() => _isProcessing = false);
+        return;
+      }
+
+      // We found the package!
+      var doc = query.docs.first;
+      var data = doc.data();
+
+      setState(() => _isProcessing = false);
+      _qrController.clear();
+      if (mounted) Navigator.pop(context); // Close scan dialog
+
+      // Open Action Dialog
+      _showPackageActionDialog(doc.reference, data);
+
+    } catch (e) {
+      debugPrint("Scan Error: $e");
+      setState(() => _isProcessing = false);
+    }
+  }
+
+  // --- NEW: OPEN CAMERA SCANNER ---
+  void _openCameraScanner() async {
+    // 1. Close the manual entry dialog first
+    Navigator.pop(context);
+
+    // 2. Open the full-screen camera
+    final scannedCode = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const QRScannerScreen()),
+    );
+
+    // 3. If a code was scanned, process it automatically!
+    if (scannedCode != null && scannedCode is String) {
+      _qrController.text = scannedCode;
+      _processScan();
+    }
+  }
+
+  void _showScanDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(LucideIcons.scanLine, size: 48, color: Colors.orange),
+              const SizedBox(height: 16),
+              const Text("Scan Package QR", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
+              const Text("Use your camera or enter the ID manually.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 12)),
+
+              const SizedBox(height: 24),
+
+              // --- CAMERA SCAN BUTTON ---
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange.shade700,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                  ),
+                  icon: const Icon(LucideIcons.camera),
+                  onPressed: _openCameraScanner,
+                  label: const Text("Open Camera Scanner", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+              const Row(
+                children: [
+                  Expanded(child: Divider()),
+                  Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text("OR MANUAL ENTRY", style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold))),
+                  Expanded(child: Divider()),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              TextField(
+                controller: _qrController,
+                decoration: InputDecoration(
+                  hintText: "e.g., KC-12345-TEN",
+                  filled: true,
+                  fillColor: kSlate50,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: kSlate100,
+                      foregroundColor: kSlate800,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                  ),
+                  onPressed: _isProcessing ? null : _processScan,
+                  child: _isProcessing ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text("Find via ID", style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // The Dialog where Courier Updates the Package Status
+  void _showPackageActionDialog(DocumentReference docRef, Map<String, dynamic> data) {
+    List<dynamic> milestones = data['milestones'] ?? [];
+
+    // Determine Current State
+    bool isPickedUp = milestones.length > 1 && milestones[1]['done'] == true;
+    bool isDroppedOff = milestones.length > 3 && milestones[3]['done'] == true;
+
+    XFile? capturedImage;
+
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          return StatefulBuilder(
+              builder: (context, setDialogState) {
+                return Dialog(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                  backgroundColor: Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: Colors.orange.shade50, shape: BoxShape.circle),
+                          child: Icon(LucideIcons.package, color: Colors.orange.shade700, size: 32),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(data['itemName'] ?? "Package", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
+                        Text("Target: ${data['target']}", style: const TextStyle(color: Colors.grey)),
+                        const Divider(height: 32),
+
+                        if (isDroppedOff) ...[
+                          const Icon(LucideIcons.checkCircle, color: kEmerald, size: 48),
+                          const SizedBox(height: 12),
+                          const Text("Delivery Completed", style: TextStyle(color: kEmerald, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 24),
+                          SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Close")))
+                        ]
+                        else if (!isPickedUp) ...[
+                          // --- ACTION: PICK UP ---
+                          const Text("Action Required: Pick-up from Donor", style: TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 50,
+                            child: ElevatedButton.icon(
+                              icon: const Icon(LucideIcons.truck),
+                              label: const Text("Confirm Pick-Up"),
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white),
+                              onPressed: () async {
+                                // Update Firestore (Milestone 1)
+                                milestones[1]['done'] = true;
+                                await docRef.update({
+                                  'milestones': milestones,
+                                  'status': 'Picked Up & In Transit'
+                                });
+                                if (context.mounted) {
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Package Picked Up! Donor notified.")));
+                                }
+                              },
+                            ),
+                          )
+                        ]
+                        else ...[
+                            // --- ACTION: DROP OFF (REQUIRES PHOTO) ---
+                            const Text("Action Required: Drop-off at NGO Hub", style: TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 16),
+
+                            // Photo Area
+                            GestureDetector(
+                              onTap: () async {
+                                final ImagePicker picker = ImagePicker();
+                                final XFile? photo = await picker.pickImage(source: ImageSource.camera);
+                                if (photo != null) setDialogState(() => capturedImage = photo);
+                              },
+                              child: Container(
+                                height: 150,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                    color: kSlate50,
+                                    border: Border.all(color: capturedImage != null ? kEmerald : kSlate300, width: 2),
+                                    borderRadius: BorderRadius.circular(16)
+                                ),
+                                child: capturedImage != null
+                                    ? ClipRRect(borderRadius: BorderRadius.circular(14), child: Image.file(File(capturedImage!.path), fit: BoxFit.cover))
+                                    : Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(LucideIcons.camera, color: Colors.orange.shade700, size: 32),
+                                    const SizedBox(height: 8),
+                                    const Text("Tap to take proof photo", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            SizedBox(
+                              width: double.infinity,
+                              height: 50,
+                              child: ElevatedButton.icon(
+                                icon: const Icon(LucideIcons.checkSquare),
+                                label: const Text("Confirm Drop-Off"),
+                                style: ElevatedButton.styleFrom(backgroundColor: kEmerald, foregroundColor: Colors.white),
+                                onPressed: capturedImage == null ? null : () async {
+
+                                  // To simulate storage upload, we use a placeholder success image URL.
+                                  // In production: upload `capturedImage` to Firebase Storage, get URL, save to DB.
+                                  String simulatedProofUrl = "https://images.unsplash.com/photo-1577705998148-6da4f3963bc8?w=400";
+
+                                  // Update Firestore (Milestones 2 and 3)
+                                  if (milestones.length > 3) {
+                                    milestones[2]['done'] = true; // Arrived at Hub
+                                    milestones[3]['done'] = true; // Verified
+                                  }
+
+                                  await docRef.update({
+                                    'milestones': milestones,
+                                    'status': 'Arrived at NGO Hub',
+                                    'proofOfDeliveryUrl': simulatedProofUrl,
+                                  });
+
+                                  if (context.mounted) {
+                                    Navigator.pop(context);
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Drop-off Verified! Photo uploaded.")));
+                                  }
+                                },
+                              ),
+                            )
+                          ],
+
+                        // Cancel button
+                        if (!isDroppedOff)
+                          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.grey)))
+                      ],
+                    ),
+                  ),
+                );
+              }
+          );
+        }
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Logistics Hub", style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w900, color: kSlate800)),
+              const Text("Courier Access Terminal", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 32),
+
+              // Big Scan Button
+              GestureDetector(
+                onTap: _showScanDialog,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  decoration: BoxDecoration(
+                      color: Colors.orange.shade700,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [BoxShadow(color: Colors.orange.shade200, blurRadius: 20, offset: const Offset(0, 10))]
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(LucideIcons.scanLine, color: Colors.white, size: 64),
+                      const SizedBox(height: 16),
+                      Text("SCAN PACKAGE QR", style: GoogleFonts.inter(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+                      const Text("To Pickup or Drop-off", style: TextStyle(color: Colors.white70)),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 40),
+              const Text("System Status", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const SizedBox(height: 16),
+
+              Row(
+                children: [
+                  Expanded(child: _statBox("ACTIVE TASKS", "2", Colors.orange.shade700)),
+                  const SizedBox(width: 16),
+                  Expanded(child: _statBox("DELIVERED", "14", kEmerald)),
+                ],
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _statBox(String label, String val, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: kSlate50, borderRadius: BorderRadius.circular(16), border: Border.all(color: kSlate100)),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey)),
+            const SizedBox(height: 8),
+            Text(val, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: color)),
+          ]
+      ),
+    );
+  }
+}
+
+// ==========================================
+// NEW: CAMERA SCANNER SCREEN
+// ==========================================
+class QRScannerScreen extends StatefulWidget {
+  const QRScannerScreen({super.key});
+
+  @override
+  State<QRScannerScreen> createState() => _QRScannerScreenState();
+}
+
+class _QRScannerScreenState extends State<QRScannerScreen> {
+  bool _isScanned = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text("Scan Package", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
+      body: Stack(
+        alignment: Alignment.center,
+        children: [
+          MobileScanner(
+            onDetect: (capture) {
+              final List<Barcode> barcodes = capture.barcodes;
+              if (barcodes.isNotEmpty && !_isScanned) {
+                final String? code = barcodes.first.rawValue;
+                if (code != null) {
+                  setState(() => _isScanned = true);
+                  Navigator.pop(context, code); // Return the scanned code back!
+                }
+              }
+            },
+          ),
+          // Simple visual overlay for scanning
+          Container(
+            width: 250,
+            height: 250,
+            decoration: BoxDecoration(
+                border: Border.all(color: Colors.orange.shade700, width: 4),
+                borderRadius: BorderRadius.circular(24)
+            ),
+          ),
+          const Positioned(
+            bottom: 50,
+            child: Text("Align QR code within the frame", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          )
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// NEW SCREEN: NGO Secure Console (PIN Entry)
+// Matches your web screenshot and uses Firebase
+// ==========================================
+class NGOSecureConsole extends StatefulWidget {
+  final VoidCallback onVerified;
+
+  const NGOSecureConsole({super.key, required this.onVerified});
+
+  @override
+  State<NGOSecureConsole> createState() => _NGOSecureConsoleState();
+}
+
+class _NGOSecureConsoleState extends State<NGOSecureConsole> {
+  final TextEditingController _pinController = TextEditingController();
+  bool _isLoading = false;
+  String _errorMessage = '';
+
+  Future<void> _verifyPinWithFirebase() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      // 1. Fetch the portal configuration from Firebase
+      // Adjust collection/doc names based on your actual database structure
+      DocumentSnapshot doc = await FirebaseFirestore.instance
+          .collection('ngo_settings')
+          .doc('portal_config')
+          .get();
+
+      if (doc.exists) {
+        String correctPin = doc['projectPin'];
+
+        // 2. Verify the entered PIN
+        if (_pinController.text.trim() == correctPin) {
+          widget.onVerified(); // Success! Go to dashboard
+        } else {
+          setState(() {
+            _errorMessage = 'Invalid Project PIN. Please try again.';
+          });
+        }
+      } else {
+        setState(() {
+          _errorMessage = 'Portal configuration not found in database.';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error connecting to server: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: kSlate100),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              )
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Icon Container
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: kBlue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.fact_check_outlined, // Replaces web icon
+                  color: kBlue,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Title
+              Text(
+                "NGO Secure Console",
+                style: GoogleFonts.inter(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: kSlate800,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+
+              // Subtitle (Fetches NGO Name from Firebase so it's not hardcoded)
+              FutureBuilder<DocumentSnapshot>(
+                  future: FirebaseFirestore.instance.collection('ngo_settings').doc('portal_config').get(),
+                  builder: (context, snapshot) {
+                    String ngoName = "Loading...";
+                    if (snapshot.hasData && snapshot.data!.exists) {
+                      ngoName = snapshot.data!['ngoName'];
+                    }
+                    return Text(
+                      "Official $ngoName Portal. Enter your project PIN.",
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        color: kSlate400,
+                      ),
+                      textAlign: TextAlign.center,
+                    );
+                  }
+              ),
+              const SizedBox(height: 32),
+
+              // PIN Input Field
+              // CORRECT
+              TextField(
+                controller: _pinController,
+                obscureText: true,
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(letterSpacing: 12), // <--- Moved here!
+                decoration: InputDecoration(
+                  hintText: "P R O J E C T  P I N",
+                  hintStyle: TextStyle(letterSpacing: 4, color: kSlate400.withOpacity(0.5)),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                  contentPadding: const EdgeInsets.symmetric(vertical: 20),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: kSlate100),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: kSlate100),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: kBlue),
+                  ),
+                ),
+              ),
+
+              if (_errorMessage.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(_errorMessage, style: const TextStyle(color: Colors.red, fontSize: 12)),
+              ],
+
+              const SizedBox(height: 24),
+
+              // Submit Button
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _verifyPinWithFirebase,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kBlue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text("Enter Secure Portal", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// ORIGINAL SCREEN: Operational Dashboard
+// This shows ONLY after successful PIN entry
+// ==========================================
+class NGOOperationalDashboard extends StatelessWidget {
+  const NGOOperationalDashboard({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -1650,7 +3068,6 @@ class NGODashboard extends StatelessWidget {
 
           const SizedBox(height: 32),
 
-          // Operational Stats
           Row(
             children: [
               _ngoStat("ACTIVE ZONES", "04", kBlue),
@@ -1660,22 +3077,22 @@ class NGODashboard extends StatelessWidget {
           ),
 
           const SizedBox(height: 32),
-          const SectionTitle(title: "Managed Disaster Zones", icon: LucideIcons.mapPin, color: kBlue),
+          const SectionTitle(title: "Managed Disaster Zones", icon: Icons.map, color: kBlue),
           const SizedBox(height: 16),
 
-          // Managed Zone Card
           _managedZoneCard("Rantau Panjang, Kelantan", "Monitoring", 92),
           _managedZoneCard("Baling, Kedah", "Relief Dispatched", 78),
 
           const SizedBox(height: 32),
-          _ngoActionButton("Publish New Field Report", LucideIcons.fileText, kBlue),
+          _ngoActionButton("Publish New Field Report", Icons.description, kBlue),
           const SizedBox(height: 12),
-          _ngoActionButton("Verify Donor Receipt (Scan QR)", LucideIcons.qrCode, kSlate800),
+          _ngoActionButton("Verify Donor Receipt (Scan QR)", Icons.qr_code, kSlate800),
         ],
       ),
     );
   }
 
+  // (Your original helper methods here...)
   Widget _ngoStat(String label, String val, Color color) {
     return Expanded(
       child: Container(
@@ -1743,7 +3160,7 @@ class SectionTitle extends StatelessWidget {
           style: GoogleFonts.inter(
             fontSize: 18,
             fontWeight: FontWeight.w800,
-            color: const Color(0xFF1E293B), // kSlate800
+            color: const Color(0xFF1E293B),
           ),
         ),
       ],
@@ -1751,28 +3168,36 @@ class SectionTitle extends StatelessWidget {
   }
 }
 
-Future<void> listAvailableModels() async {
-  final apiKey = dotenv.env['GEMINI_KEY']; // Ensure this matches your .env key
-  final url = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey");
-
-  try {
-    final response = await http.get(url);
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      print("--- AVAILABLE MODELS ---");
-      for (var model in data['models']) {
-        print("Model Name: ${model['name']}");
-        print("Methods: ${model['supportedGenerationMethods']}");
-        print("-------------------------");
-      }
-    } else {
-      print("Failed to list models: ${response.statusCode}");
-      print("Response: ${response.body}");
-    }
-  } catch (e) {
-    print("Error listing models: $e");
-  }
-}
+// class SectionTitle extends StatelessWidget {
+//   final String title;
+//   final IconData icon;
+//   final Color color;
+//
+//   const SectionTitle({
+//     super.key,
+//     required this.title,
+//     required this.icon,
+//     required this.color,
+//   });
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     return Row(
+//       children: [
+//         Icon(icon, size: 20, color: color),
+//         const SizedBox(width: 8),
+//         Text(
+//           title,
+//           style: GoogleFonts.inter(
+//             fontSize: 18,
+//             fontWeight: FontWeight.w800,
+//             color: const Color(0xFF1E293B), // kSlate800
+//           ),
+//         ),
+//       ],
+//     );
+//   }
+// }
 
 // ==========================================
 // GLOBAL CACHE (Above the class)
@@ -2571,9 +3996,28 @@ class _ReliefMapState extends State<ReliefMap> {
                                 }
 
                                 // 6. CREATE TRACKING RECORD
+                                // await userRef.collection('donations').add({
+                                //   'id': "KC-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}",
+                                //   'target': item['location'] ?? "Relief Project",
+                                //   'status': "Processing",
+                                //   'type': 'money',
+                                //   'amount': donateAmount,
+                                //   'imageUrl': imageToSave,
+                                //   'milestones': [
+                                //     {'label': 'Payment Verified', 'date': 'Today', 'done': true},
+                                //     {'label': 'NGO Allocation', 'date': 'Pending', 'done': false},
+                                //     {'label': 'Final Disbursement', 'date': '', 'done': false},
+                                //   ],
+                                //   'timestamp': FieldValue.serverTimestamp(),
+                                // });
+                                // 6. CREATE TRACKING RECORD
                                 await userRef.collection('donations').add({
                                   'id': "KC-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}",
                                   'target': item['location'] ?? "Relief Project",
+
+                                  // ---> ADD THIS ONE LINE <---
+                                  'category': item['category'] ?? "Relief Aid",
+
                                   'status': "Processing",
                                   'type': 'money',
                                   'amount': donateAmount,
@@ -2877,200 +4321,826 @@ class _ReliefMapState extends State<ReliefMap> {
     );
   }
 
+  // void _showMatchProcessDialog(BuildContext context, Map<String, dynamic> locationData, String selectedItem, String categoryKey) {
+  //   int state = 0;
+  //   bool isSaving = false;
+  //   String? generatedQrData;
+  //   String deliveryMethod = 'self'; // 'self' or 'driver'
+  //   final String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
+  //
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (context) {
+  //       // --- NEW: STREAMBUILDER FETCHES THE ADDRESS IN REAL-TIME ---
+  //       return StreamBuilder<DocumentSnapshot>(
+  //           stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+  //           builder: (context, userSnapshot) {
+  //
+  //             // Extract the address
+  //             String currentAddress = "";
+  //             if (userSnapshot.hasData && userSnapshot.data!.exists) {
+  //               final data = userSnapshot.data!.data() as Map<String, dynamic>?;
+  //               currentAddress = data?['address']?.toString().trim() ?? "";
+  //             }
+  //             bool hasAddress = currentAddress.isNotEmpty;
+  //
+  //             return StatefulBuilder(
+  //               builder: (context, setState) {
+  //                 return Dialog(
+  //                   insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+  //                   backgroundColor: Colors.white,
+  //                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+  //                   child: Column(
+  //                     mainAxisSize: MainAxisSize.min,
+  //                     children: [
+  //                       _buildDialogHeader(locationData, context),
+  //
+  //                       Padding(
+  //                         padding: const EdgeInsets.all(24),
+  //                         child: state == 0
+  //                         // --- STATE 0: SIMULATION LOADING ---
+  //                             ? Column(
+  //                           children: [
+  //                             const SizedBox(height: 20),
+  //                             const SizedBox(
+  //                               width: 60, height: 60,
+  //                               child: CircularProgressIndicator(color: kEmerald, strokeWidth: 5),
+  //                             ),
+  //                             const SizedBox(height: 24),
+  //                             Text("AI is finding local needs...",
+  //                                 style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: kSlate500)),
+  //                             const SizedBox(height: 24),
+  //                             TextButton(
+  //                               onPressed: () async {
+  //                                 await Future.delayed(const Duration(milliseconds: 800));
+  //                                 setState(() => state = 1);
+  //                               },
+  //                               child: const Text("Click to simulate match",
+  //                                   style: TextStyle(color: kEmerald, fontWeight: FontWeight.bold)),
+  //                             ),
+  //                             const SizedBox(height: 20),
+  //                           ],
+  //                         )
+  //                             : state == 1
+  //                         // --- STATE 1: MATCH FOUND DETAILS & DELIVERY CHOICE ---
+  //                             ? Column(
+  //                           children: [
+  //                             Container(
+  //                               padding: const EdgeInsets.all(16),
+  //                               decoration: BoxDecoration(
+  //                                 color: kEmerald.withOpacity(0.08),
+  //                                 borderRadius: BorderRadius.circular(16),
+  //                                 border: Border.all(color: kEmerald.withOpacity(0.2)),
+  //                               ),
+  //                               child: Row(
+  //                                 crossAxisAlignment: CrossAxisAlignment.start,
+  //                                 children: [
+  //                                   const Icon(LucideIcons.zap, color: kEmerald, size: 24),
+  //                                   const SizedBox(width: 12),
+  //                                   Expanded(
+  //                                     child: RichText(
+  //                                       text: TextSpan(
+  //                                           style: GoogleFonts.inter(color: kSlate800, fontSize: 13, height: 1.4),
+  //                                           children: [
+  //                                             const TextSpan(text: "AI Match Found! ", style: TextStyle(fontWeight: FontWeight.w900, color: kEmerald)),
+  //                                             const TextSpan(text: "Your contribution for "),
+  //                                             TextSpan(text: selectedItem, style: const TextStyle(fontWeight: FontWeight.w800)),
+  //                                             const TextSpan(text: " is critical for the "),
+  //                                             TextSpan(text: "${locationData['location']} ", style: const TextStyle(fontWeight: FontWeight.w800)),
+  //                                             const TextSpan(text: "zone."),
+  //                                           ]
+  //                                       ),
+  //                                     ),
+  //                                   ),
+  //                                 ],
+  //                               ),
+  //                             ),
+  //                             const SizedBox(height: 16),
+  //
+  //                             // Delivery Selection
+  //                             const Align(
+  //                               alignment: Alignment.centerLeft,
+  //                               child: Text("SELECT DELIVERY METHOD", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 0.5)),
+  //                             ),
+  //                             const SizedBox(height: 12),
+  //                             Row(
+  //                               children: [
+  //                                 Expanded(
+  //                                   child: _buildDeliveryOption(
+  //                                     title: "Self\nDrop-off",
+  //                                     icon: LucideIcons.mapPin,
+  //                                     isSelected: deliveryMethod == 'self',
+  //                                     onTap: () => setState(() => deliveryMethod = 'self'),
+  //                                   ),
+  //                                 ),
+  //                                 const SizedBox(width: 12),
+  //                                 Expanded(
+  //                                   child: _buildDeliveryOption(
+  //                                     title: "Courier\nPick-up",
+  //                                     icon: LucideIcons.truck,
+  //                                     isSelected: deliveryMethod == 'driver',
+  //                                     onTap: () => setState(() => deliveryMethod = 'driver'),
+  //                                   ),
+  //                                 ),
+  //                               ],
+  //                             ),
+  //                             const SizedBox(height: 16),
+  //
+  //                             // Dynamic Location/Pickup Card
+  //                             deliveryMethod == 'self'
+  //                                 ? Container(
+  //                               width: double.infinity,
+  //                               padding: const EdgeInsets.all(20),
+  //                               decoration: BoxDecoration(
+  //                                 color: kSlate50,
+  //                                 borderRadius: BorderRadius.circular(16),
+  //                                 border: Border.all(color: kSlate100),
+  //                               ),
+  //                               child: Column(
+  //                                 crossAxisAlignment: CrossAxisAlignment.start,
+  //                                 children: [
+  //                                   const Text("RECOMMENDED DROP-OFF", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 0.5)),
+  //                                   const SizedBox(height: 12),
+  //                                   Row(
+  //                                     children: [
+  //                                       const Icon(LucideIcons.mapPin, color: kBlue, size: 24),
+  //                                       const SizedBox(width: 12),
+  //                                       Expanded(
+  //                                         child: Column(
+  //                                           crossAxisAlignment: CrossAxisAlignment.start,
+  //                                           children: [
+  //                                             const Text("MERCY Malaysia HQ", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: kSlate800)),
+  //                                             Text("Kuala Lumpur City Centre", style: GoogleFonts.inter(color: kSlate500, fontSize: 12)),
+  //                                           ],
+  //                                         ),
+  //                                       )
+  //                                     ],
+  //                                   ),
+  //                                 ],
+  //                               ),
+  //                             )
+  //                                 :
+  //                             // --- NEW DYNAMIC ADDRESS UI ---
+  //                             Container(
+  //                               width: double.infinity,
+  //                               padding: const EdgeInsets.all(20),
+  //                               decoration: BoxDecoration(
+  //                                 color: kBlue.withOpacity(0.05),
+  //                                 borderRadius: BorderRadius.circular(16),
+  //                                 border: Border.all(color: kBlue.withOpacity(0.2)),
+  //                               ),
+  //                               child: Column(
+  //                                 crossAxisAlignment: CrossAxisAlignment.start,
+  //                                 children: [
+  //                                   Row(
+  //                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  //                                     children: [
+  //                                       const Text("DOORSTEP COURIER PICK-UP", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kBlue, letterSpacing: 0.5)),
+  //                                       // The Edit Button
+  //                                       GestureDetector(
+  //                                         onTap: () => _editAddressDialog(context, uid, currentAddress),
+  //                                         child: Container(
+  //                                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+  //                                           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: kBlue.withOpacity(0.2))),
+  //                                           child: const Text("EDIT", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: kBlue)),
+  //                                         ),
+  //                                       )
+  //                                     ],
+  //                                   ),
+  //                                   const SizedBox(height: 12),
+  //                                   Row(
+  //                                     crossAxisAlignment: CrossAxisAlignment.start,
+  //                                     children: [
+  //                                       const Icon(LucideIcons.mapPin, color: kBlue, size: 24),
+  //                                       const SizedBox(width: 12),
+  //                                       Expanded(
+  //                                         child: Column(
+  //                                           crossAxisAlignment: CrossAxisAlignment.start,
+  //                                           children: [
+  //                                             Text(
+  //                                                 hasAddress ? currentAddress : "No Address Registered",
+  //                                                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: hasAddress ? kSlate800 : Colors.redAccent)
+  //                                             ),
+  //                                             const SizedBox(height: 4),
+  //                                             Text(
+  //                                                 hasAddress ? "Please verify this is the correct pick-up spot." : "Tap EDIT to add your address.",
+  //                                                 style: GoogleFonts.inter(color: kSlate500, fontSize: 12)
+  //                                             ),
+  //                                           ],
+  //                                         ),
+  //                                       )
+  //                                     ],
+  //                                   ),
+  //                                 ],
+  //                               ),
+  //                             ),
+  //
+  //                             const SizedBox(height: 24),
+  //
+  //                             // Confirm Button
+  //                             _buildStepButton(
+  //                               label: "Confirm & Get QR",
+  //                               icon: LucideIcons.qrCode,
+  //                               isLoading: isSaving,
+  //                               onTap: () async {
+  //                                 // NEW VALIDATION: Prevent courier without address
+  //                                 if (deliveryMethod == 'driver' && !hasAddress) {
+  //                                   ScaffoldMessenger.of(context).showSnackBar(
+  //                                       const SnackBar(
+  //                                         content: Text("Please add a pick-up address first."),
+  //                                         backgroundColor: Colors.redAccent,
+  //                                         behavior: SnackBarBehavior.floating,
+  //                                       )
+  //                                   );
+  //                                   return;
+  //                                 }
+  //
+  //                                 setState(() => isSaving = true);
+  //
+  //                                 // If driver selected, show a matching simulation
+  //                                 if (deliveryMethod == 'driver') {
+  //                                   setState(() => state = 2);
+  //                                   await Future.delayed(const Duration(seconds: 2));
+  //                                 }
+  //
+  //                                 String finalImage = _categoryImages[categoryKey] ?? _categoryImages['Default']!;
+  //
+  //                                 String qrCode = await _saveItemDonationToFirebase(locationData, selectedItem, finalImage, deliveryMethod);
+  //
+  //                                 if (context.mounted) {
+  //                                   setState(() {
+  //                                     isSaving = false;
+  //                                     generatedQrData = qrCode;
+  //                                     state = 3;
+  //                                   });
+  //                                 }
+  //                               },
+  //                             ),
+  //                           ],
+  //                         )
+  //                             : state == 2
+  //                         // --- STATE 2: FINDING COURIER SIMULATION ---
+  //                             ? Column(
+  //                           children: [
+  //                             const SizedBox(height: 20),
+  //                             const SizedBox(width: 60, height: 60, child: CircularProgressIndicator(color: kBlue, strokeWidth: 5)),
+  //                             const SizedBox(height: 24),
+  //                             Text("Scheduling courier pick-up...", style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: kSlate500)),
+  //                             const SizedBox(height: 20),
+  //                           ],
+  //                         )
+  //                         // --- STATE 3: QR CODE DISPLAY ---
+  //                             : Column(
+  //                           children: [
+  //                             const Text("DONATION REGISTERED", style: TextStyle(fontWeight: FontWeight.w900, color: kEmerald, letterSpacing: 1.0, fontSize: 12)),
+  //                             const SizedBox(height: 20),
+  //
+  //                             Container(
+  //                               padding: const EdgeInsets.all(16),
+  //                               decoration: BoxDecoration(
+  //                                   color: Colors.white,
+  //                                   borderRadius: BorderRadius.circular(16),
+  //                                   border: Border.all(color: kSlate100, width: 2),
+  //                                   boxShadow: const [BoxShadow(color: kSlate100, blurRadius: 10)]
+  //                               ),
+  //                               child: Image.network(
+  //                                 "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$generatedQrData",
+  //                                 width: 150,
+  //                                 height: 150,
+  //                                 loadingBuilder: (context, child, loadingProgress) {
+  //                                   if (loadingProgress == null) return child;
+  //                                   return const SizedBox(width: 150, height: 150, child: Center(child: CircularProgressIndicator()));
+  //                                 },
+  //                               ),
+  //                             ),
+  //
+  //                             const SizedBox(height: 16),
+  //                             Text(generatedQrData ?? "ERROR", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kSlate800)),
+  //
+  //                             Text(
+  //                                 deliveryMethod == 'self' ? "Show this to the NGO officer." : "Show this to the logistics courier.",
+  //                                 style: const TextStyle(color: kSlate500, fontSize: 12)
+  //                             ),
+  //                             const SizedBox(height: 24),
+  //
+  //                             _buildStepButton(
+  //                               label: "Save to Dashboard",
+  //                               icon: LucideIcons.download,
+  //                               onTap: () {
+  //                                 Navigator.pop(context);
+  //                                 _showSuccessAlert(context);
+  //                               },
+  //                             ),
+  //                           ],
+  //                         ),
+  //                       ),
+  //                     ],
+  //                   ),
+  //                 );
+  //               },
+  //             );
+  //           }
+  //       );
+  //     },
+  //   );
+  // }
   void _showMatchProcessDialog(BuildContext context, Map<String, dynamic> locationData, String selectedItem, String categoryKey) {
-    // State 0: Loading/Simulate
-    // State 1: Match Found (Show Details)
-    // State 2: QR Code Display (NEW!)
     int state = 0;
     bool isSaving = false;
-    String? generatedQrData; // To hold the ID we generate
+    bool isAiFetching = false;
+    String? generatedQrData;
+    String deliveryMethod = 'self'; // 'self' or 'driver'
+
+    // --- NEW: Dynamic AI Match Variables ---
+    String dynamicNgoName = "Searching...";
+    String dynamicNgoAddress = "Searching...";
+
+    final String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        // STREAMBUILDER FETCHES THE ADDRESS IN REAL-TIME
+        return StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+            builder: (context, userSnapshot) {
+
+              // Extract the address
+              String currentAddress = "";
+              if (userSnapshot.hasData && userSnapshot.data!.exists) {
+                final data = userSnapshot.data!.data() as Map<String, dynamic>?;
+                currentAddress = data?['address']?.toString().trim() ?? "";
+              }
+              bool hasAddress = currentAddress.isNotEmpty;
+
+              return StatefulBuilder(
+                builder: (context, setState) {
+
+                  // --- NEW: ACTUAL AI FETCH FUNCTION ---
+                  Future<void> fetchNearestNGO() async {
+                    setState(() => isAiFetching = true);
+                    try {
+                      final apiKey = dotenv.env['GEMINI_FIND_KEY'];
+                      final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey!);
+
+                      final String targetLoc = locationData['location'] ?? "Malaysia";
+
+                      // Prompt Gemini to find a nearby NGO
+                      final prompt = """
+                      Find a real or highly plausible NGO branch, relief center, or drop-off point near $targetLoc, Malaysia that accepts $selectedItem donations. 
+                      Return STRICTLY a RAW JSON object with 'ngo_name' and 'address'. DO NOT wrap in markdown.
+                      Example: {"ngo_name": "MERCY Malaysia Kelantan Chapter", "address": "Jalan Hospital, 15200 Kota Bharu, Kelantan"}
+                      """;
+
+                      final response = await model.generateContent([Content.text(prompt)]);
+                      String rawJson = response.text ?? "{}";
+
+                      // Cleanup markdown if AI accidentally includes it
+                      rawJson = rawJson.replaceAll('```json', '').replaceAll('```', '').trim();
+                      int start = rawJson.indexOf('{');
+                      int end = rawJson.lastIndexOf('}');
+                      if (start != -1 && end != -1) rawJson = rawJson.substring(start, end + 1);
+
+                      final decoded = jsonDecode(rawJson);
+
+                      setState(() {
+                        dynamicNgoName = decoded['ngo_name'] ?? "MERCY Malaysia Hub";
+                        dynamicNgoAddress = decoded['address'] ?? targetLoc;
+                        state = 1; // Move to results state
+                        isAiFetching = false;
+                      });
+                    } catch (e) {
+                      debugPrint("AI NGO Match Error: $e");
+                      // Fallback if AI fails (e.g. Quota limit)
+                      setState(() {
+                        dynamicNgoName = "Malaysian Red Crescent Hub";
+                        dynamicNgoAddress = "Nearest available center to ${locationData['location']}";
+                        state = 1;
+                        isAiFetching = false;
+                      });
+                    }
+                  }
+
+                  return Dialog(
+                    insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+                    backgroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildDialogHeader(locationData, context),
+
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: state == 0
+                          // --- STATE 0: SIMULATION LOADING ---
+                              ? Column(
+                            children: [
+                              const SizedBox(height: 20),
+                              const SizedBox(
+                                width: 60, height: 60,
+                                child: CircularProgressIndicator(color: kEmerald, strokeWidth: 5),
+                              ),
+                              const SizedBox(height: 24),
+                              Text(isAiFetching ? "Scanning local logistics..." : "AI is finding local needs...",
+                                  style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: kSlate500)),
+                              const SizedBox(height: 24),
+
+                              // Trigger the REAL AI fetch instead of just waiting
+                              isAiFetching
+                                  ? const SizedBox(height: 48) // Space holder while fetching
+                                  : TextButton(
+                                onPressed: fetchNearestNGO, // <-- CALLS AI HERE
+                                child: const Text("Find Nearest Drop-off",
+                                    style: TextStyle(color: kEmerald, fontWeight: FontWeight.bold, fontSize: 16)),
+                              ),
+                              const SizedBox(height: 20),
+                            ],
+                          )
+                              : state == 1
+                          // --- STATE 1: MATCH FOUND DETAILS & DELIVERY CHOICE ---
+                              ? Column(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: kEmerald.withOpacity(0.08),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: kEmerald.withOpacity(0.2)),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(LucideIcons.zap, color: kEmerald, size: 24),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: RichText(
+                                        text: TextSpan(
+                                            style: GoogleFonts.inter(color: kSlate800, fontSize: 13, height: 1.4),
+                                            children: [
+                                              const TextSpan(text: "AI Match Found! ", style: TextStyle(fontWeight: FontWeight.w900, color: kEmerald)),
+                                              const TextSpan(text: "Your contribution for "),
+                                              TextSpan(text: selectedItem, style: const TextStyle(fontWeight: FontWeight.w800)),
+                                              const TextSpan(text: " is critical for the "),
+                                              TextSpan(text: "${locationData['location']} ", style: const TextStyle(fontWeight: FontWeight.w800)),
+                                              const TextSpan(text: "zone."),
+                                            ]
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Delivery Selection
+                              const Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text("SELECT DELIVERY METHOD", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 0.5)),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildDeliveryOption(
+                                      title: "Self\nDrop-off",
+                                      icon: LucideIcons.mapPin,
+                                      isSelected: deliveryMethod == 'self',
+                                      onTap: () => setState(() => deliveryMethod = 'self'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _buildDeliveryOption(
+                                      title: "Courier\nPick-up",
+                                      icon: LucideIcons.truck,
+                                      isSelected: deliveryMethod == 'driver',
+                                      onTap: () => setState(() => deliveryMethod = 'driver'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Dynamic Location/Pickup Card
+                              deliveryMethod == 'self'
+                                  ? Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: kSlate50,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: kSlate100),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text("AI RECOMMENDED DROP-OFF", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kEmerald, letterSpacing: 0.5)),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        const Icon(LucideIcons.mapPin, color: kBlue, size: 24),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              // --- NEW: Dynamic AI Name and Address ---
+                                              Text(dynamicNgoName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: kSlate800)),
+                                              Text(dynamicNgoAddress, style: GoogleFonts.inter(color: kSlate500, fontSize: 12)),
+                                            ],
+                                          ),
+                                        )
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              )
+                                  :
+                              // --- NEW DYNAMIC ADDRESS UI ---
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: kBlue.withOpacity(0.05),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: kBlue.withOpacity(0.2)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Text("DOORSTEP COURIER PICK-UP", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kBlue, letterSpacing: 0.5)),
+                                        // The Edit Button
+                                        GestureDetector(
+                                          onTap: () => _editAddressDialog(context, uid, currentAddress),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: kBlue.withOpacity(0.2))),
+                                            child: const Text("EDIT", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: kBlue)),
+                                          ),
+                                        )
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Icon(LucideIcons.mapPin, color: kBlue, size: 24),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                  hasAddress ? currentAddress : "No Address Registered",
+                                                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: hasAddress ? kSlate800 : Colors.redAccent)
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                  hasAddress ? "Please verify this is the correct pick-up spot." : "Tap EDIT to add your address.",
+                                                  style: GoogleFonts.inter(color: kSlate500, fontSize: 12)
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(height: 24),
+
+                              // Confirm Button
+                              _buildStepButton(
+                                label: "Confirm & Get QR",
+                                icon: LucideIcons.qrCode,
+                                isLoading: isSaving,
+                                onTap: () async {
+                                  // NEW VALIDATION: Prevent courier without address
+                                  if (deliveryMethod == 'driver' && !hasAddress) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text("Please add a pick-up address first."),
+                                          backgroundColor: Colors.redAccent,
+                                          behavior: SnackBarBehavior.floating,
+                                        )
+                                    );
+                                    return;
+                                  }
+
+                                  setState(() => isSaving = true);
+
+                                  // If driver selected, show a matching simulation
+                                  if (deliveryMethod == 'driver') {
+                                    setState(() => state = 2);
+                                    await Future.delayed(const Duration(seconds: 2));
+                                  }
+
+                                  String finalImage = _categoryImages[categoryKey] ?? _categoryImages['Default']!;
+
+                                  String qrCode = await _saveItemDonationToFirebase(locationData, selectedItem, finalImage, deliveryMethod);
+
+                                  if (context.mounted) {
+                                    setState(() {
+                                      isSaving = false;
+                                      generatedQrData = qrCode;
+                                      state = 3;
+                                    });
+                                  }
+                                },
+                              ),
+                            ],
+                          )
+                              : state == 2
+                          // --- STATE 2: FINDING COURIER SIMULATION ---
+                              ? Column(
+                            children: [
+                              const SizedBox(height: 20),
+                              const SizedBox(width: 60, height: 60, child: CircularProgressIndicator(color: kBlue, strokeWidth: 5)),
+                              const SizedBox(height: 24),
+                              Text("Scheduling courier pick-up...", style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: kSlate500)),
+                              const SizedBox(height: 20),
+                            ],
+                          )
+                          // --- STATE 3: QR CODE DISPLAY ---
+                              : Column(
+                            children: [
+                              const Text("DONATION REGISTERED", style: TextStyle(fontWeight: FontWeight.w900, color: kEmerald, letterSpacing: 1.0, fontSize: 12)),
+                              const SizedBox(height: 20),
+
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: kSlate100, width: 2),
+                                    boxShadow: const [BoxShadow(color: kSlate100, blurRadius: 10)]
+                                ),
+                                child: Image.network(
+                                  "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$generatedQrData",
+                                  width: 150,
+                                  height: 150,
+                                  loadingBuilder: (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return const SizedBox(width: 150, height: 150, child: Center(child: CircularProgressIndicator()));
+                                  },
+                                ),
+                              ),
+
+                              const SizedBox(height: 16),
+                              Text(generatedQrData ?? "ERROR", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kSlate800)),
+
+                              Text(
+                                  deliveryMethod == 'self' ? "Show this to the NGO officer." : "Show this to the logistics courier.",
+                                  style: const TextStyle(color: kSlate500, fontSize: 12)
+                              ),
+                              const SizedBox(height: 24),
+
+                              _buildStepButton(
+                                label: "Save to Dashboard",
+                                icon: LucideIcons.download,
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _showSuccessAlert(context);
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            }
+        );
+      },
+    );
+  }
+
+  // HELPER: Small pop-up to edit address from the map UI
+  void _editAddressDialog(BuildContext context, String uid, String currentAddress) {
+    final TextEditingController controller = TextEditingController(text: currentAddress);
+    bool isSaving = false;
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
         return StatefulBuilder(
-          builder: (context, setState) {
+          builder: (context, setDialogState) {
             return Dialog(
               insetPadding: const EdgeInsets.symmetric(horizontal: 20),
               backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Keep Header Consistent
-                  _buildDialogHeader(locationData, context),
-
-                  Padding(
+                  // 1. CUSTOM HEADER (Changed to Green)
+                  Container(
                     padding: const EdgeInsets.all(24),
-                    child: state == 0
-                    // --- STATE 0: SIMULATION LOADING ---
-                        ? Column(
+                    decoration: const BoxDecoration(
+                      color: kEmerald, // <-- 1. CHANGED HERE
+                      borderRadius: BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28)),
+                    ),
+                    child: Row(
                       children: [
-                        const SizedBox(height: 20),
-                        const SizedBox(
-                          width: 60, height: 60,
-                          child: CircularProgressIndicator(color: kEmerald, strokeWidth: 5),
-                        ),
-                        const SizedBox(height: 24),
-                        Text("AI is finding local needs...",
-                            style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: kSlate500)),
-                        const SizedBox(height: 24),
-                        TextButton(
-                          onPressed: () async {
-                            await Future.delayed(const Duration(milliseconds: 800));
-                            setState(() => state = 1);
-                          },
-                          child: const Text("Click to simulate match",
-                              style: TextStyle(color: kEmerald, fontWeight: FontWeight.bold)),
-                        ),
-                        const SizedBox(height: 20),
-                      ],
-                    )
-                        : state == 1
-                    // --- STATE 1: MATCH FOUND DETAILS ---
-                        ? Column(
-                      children: [
-                        // 1. Green Success Box
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: kEmerald.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: kEmerald.withOpacity(0.2)),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(LucideIcons.zap, color: kEmerald, size: 24),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: RichText(
-                                  text: TextSpan(
-                                      style: GoogleFonts.inter(color: kSlate800, fontSize: 13, height: 1.4),
-                                      children: [
-                                        const TextSpan(text: "AI Match Found! ", style: TextStyle(fontWeight: FontWeight.w900, color: kEmerald)),
-                                        const TextSpan(text: "Your contribution for "),
-                                        TextSpan(text: selectedItem, style: const TextStyle(fontWeight: FontWeight.w800)),
-                                        const TextSpan(text: " is critical for the "),
-                                        TextSpan(text: "${locationData['location']} ", style: const TextStyle(fontWeight: FontWeight.w800)),
-                                        const TextSpan(text: "zone."),
-                                      ]
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // 2. Drop-off Location Card
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: kSlate50,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: kSlate100),
-                          ),
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text("RECOMMENDED DROP-OFF", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 0.5)),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  const Icon(LucideIcons.mapPin, color: kBlue, size: 24),
-                                  const SizedBox(width: 12),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text("MERCY Malaysia HQ", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: kSlate800)),
-                                      Text("Kuala Lumpur City Centre", style: GoogleFonts.inter(color: kSlate500, fontSize: 12)),
-                                    ],
-                                  )
-                                ],
+                              Text(
+                                "Update Address",
+                                style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18),
                               ),
-                              const SizedBox(height: 16),
-                              const Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text("Hours: 9AM - 5PM", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: kSlate500)),
-                                  Text("Condition: New/Gently Used", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: kSlate500)),
-                                ],
-                              )
+                              const Text(
+                                "COURIER PICK-UP LOGISTICS",
+                                style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.1),
+                              ),
                             ],
                           ),
                         ),
-
-                        const SizedBox(height: 24),
-
-                        // 3. Confirm Button (Saves to Firebase)
-                        _buildStepButton(
-                          label: "Confirm & Get QR",
-                          icon: LucideIcons.qrCode,
-                          isLoading: isSaving,
-                          onTap: () async {
-                            setState(() => isSaving = true);
-
-                            // --- FIX: SELECT IMAGE BASED ON THE CATEGORY MAP ---
-                            String finalImage = _categoryImages[categoryKey] ?? _categoryImages['Default']!;
-
-                            // Save to Firebase and get the unique ID back
-                            String qrCode = await _saveItemDonationToFirebase(locationData, selectedItem, finalImage);
-
-                            if (context.mounted) {
-                              setState(() {
-                                isSaving = false;
-                                generatedQrData = qrCode; // Save the ID to display
-                                state = 2; // MOVE TO STATE 2 (QR DISPLAY)
-                              });
-                            }
+                        IconButton(
+                          onPressed: () {
+                            if (!isSaving) Navigator.pop(context);
                           },
-                        ),
+                          icon: const Icon(LucideIcons.x, color: Colors.white, size: 20),
+                        )
                       ],
-                    )
-                    // --- STATE 2: QR CODE DISPLAY (NEW!) ---
-                        : Column(
-                      children: [
-                        const Text("DONATION REGISTERED", style: TextStyle(fontWeight: FontWeight.w900, color: kEmerald, letterSpacing: 1.0, fontSize: 12)),
-                        const SizedBox(height: 20),
+                    ),
+                  ),
 
-                        // THE QR CODE IMAGE
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: kSlate100, width: 2),
-                              boxShadow: [BoxShadow(color: kSlate100, blurRadius: 10)]
-                          ),
-                          // Uses a public API to generate QR code from the string
-                          child: Image.network(
-                            "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$generatedQrData",
-                            width: 150,
-                            height: 150,
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return const SizedBox(width: 150, height: 150, child: Center(child: CircularProgressIndicator()));
-                            },
+                  // 2. BODY CONTENT
+                  Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "FULL STREET ADDRESS",
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 0.5),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Formatted Text Field
+                        TextField(
+                          controller: controller,
+                          maxLines: 3,
+                          autofocus: true,
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: kSlate800),
+                          decoration: InputDecoration(
+                            hintText: "Enter your full address (Street, City, State)...",
+                            hintStyle: const TextStyle(color: kSlate400, fontWeight: FontWeight.w400),
+                            filled: true,
+                            fillColor: kSlate50,
+                            contentPadding: const EdgeInsets.all(20),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: kSlate100, width: 2)),
+                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: kEmerald, width: 2)), // <-- 2. CHANGED HERE
                           ),
                         ),
 
-                        const SizedBox(height: 16),
-                        Text(generatedQrData ?? "ERROR", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kSlate800)),
-                        const Text("Show this to the NGO officer.", style: TextStyle(color: kSlate500, fontSize: 12)),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 32),
 
-                        // DONE BUTTON
-                        _buildStepButton(
-                          label: "Save to Dashboard",
-                          icon: LucideIcons.download,
-                          onTap: () {
-                            Navigator.pop(context); // Close Dialog
-                            _showSuccessAlert(context);
-                          },
+                        // 3. FULL WIDTH ACTION BUTTON
+                        SizedBox(
+                          width: double.infinity,
+                          height: 56,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: kEmerald, // <-- 3. CHANGED HERE
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              elevation: 0,
+                            ),
+                            onPressed: isSaving
+                                ? null
+                                : () async {
+                              if (controller.text.trim().isEmpty) return;
+
+                              setDialogState(() => isSaving = true);
+
+                              // Save straight to Firebase
+                              await FirebaseFirestore.instance.collection('users').doc(uid).update({
+                                'address': controller.text.trim()
+                              });
+
+                              if (context.mounted) Navigator.pop(context); // Close the edit dialog
+                            },
+                            child: isSaving
+                                ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                            )
+                                : const Text("Save Address", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                          ),
                         ),
                       ],
                     ),
@@ -3085,9 +5155,371 @@ class _ReliefMapState extends State<ReliefMap> {
   }
 
   // ==========================================
+  // NEW: DONATION & COURIER TRACKING DASHBOARD
+  // ==========================================
+  void _showTrackingDashboard(BuildContext context) {
+    final String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
+    if (uid.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(topLeft: Radius.circular(32), topRight: Radius.circular(32)),
+          ),
+          child: Column(
+            children: [
+              // 1. Header
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: const BoxDecoration(
+                  color: kBlue,
+                  borderRadius: BorderRadius.only(topLeft: Radius.circular(32), topRight: Radius.circular(32)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Track Logistics", style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20)),
+                          const Text("COURIER & DROP-OFF STATUS", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(LucideIcons.x, color: Colors.white, size: 24),
+                    )
+                  ],
+                ),
+              ),
+
+              // 2. Body (Real-time Stream from Firebase)
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(uid)
+                      .collection('donations')
+                      .orderBy('timestamp', descending: true)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: kBlue));
+                    }
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return const Center(
+                        child: Text("No active logistics found.", style: TextStyle(color: kSlate500, fontWeight: FontWeight.w600)),
+                      );
+                    }
+
+                    final docs = snapshot.data!.docs;
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(20),
+                      itemCount: docs.length,
+                      itemBuilder: (context, index) {
+                        final data = docs[index].data() as Map<String, dynamic>;
+                        return _buildDonationTrackerCard(context, data);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDonationTrackerCard(BuildContext context, Map<String, dynamic> data) {
+    bool isMoney = data['type'] == 'money';
+    String title = isMoney ? "RM ${data['amount']}" : (data['itemName'] ?? "Donation");
+    String target = data['target'] ?? "Unknown Location";
+    String status = data['status'] ?? "Processing";
+    String deliveryMethod = data['deliveryMethod'] ?? "self";
+    List<dynamic> milestones = data['milestones'] ?? [];
+    String qrData = data['qrCodeData'] ?? "";
+
+    bool isCompleted = status.toLowerCase().contains("distributed") || status.toLowerCase().contains("arrived");
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: kSlate100, width: 2),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top Info Row
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                // Item Image
+                Container(
+                  width: 50, height: 50,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: kSlate100,
+                    image: data['imageUrl'] != null
+                        ? DecorationImage(image: NetworkImage(data['imageUrl']), fit: BoxFit.cover)
+                        : null,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: kSlate800)),
+                      Text(target, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: kSlate500)),
+                    ],
+                  ),
+                ),
+                // Status Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isCompleted ? kEmerald.withOpacity(0.1) : kBlue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    status.toUpperCase(),
+                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: isCompleted ? kEmerald : kBlue),
+                  ),
+                )
+              ],
+            ),
+          ),
+
+          const Divider(height: 1, color: kSlate100),
+
+          // Milestone Timeline (Updates in real-time!)
+          if (milestones.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: List.generate(milestones.length, (index) {
+                  final m = milestones[index];
+                  bool isDone = m['done'] == true;
+                  bool isLast = index == milestones.length - 1;
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Timeline Graphic (Dots and Lines)
+                      Column(
+                        children: [
+                          Container(
+                            width: 20, height: 20,
+                            decoration: BoxDecoration(
+                              color: isDone ? kBlue : Colors.white,
+                              border: Border.all(color: isDone ? kBlue : kSlate200, width: 2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: isDone ? const Icon(LucideIcons.check, size: 12, color: Colors.white) : null,
+                          ),
+                          if (!isLast)
+                            Container(width: 2, height: 30, color: isDone ? kBlue : kSlate200),
+                        ],
+                      ),
+                      const SizedBox(width: 16),
+                      // Milestone Text
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            m['label'] ?? "",
+                            style: TextStyle(
+                              fontWeight: isDone ? FontWeight.w800 : FontWeight.w600,
+                              color: isDone ? kSlate800 : kSlate400,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      )
+                    ],
+                  );
+                }),
+              ),
+            ),
+
+          // Show QR Code Button (Only if it's an item and not completed yet)
+          if (!isCompleted && !isMoney && qrData.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showSavedQRDialog(context, qrData, target, deliveryMethod),
+                  icon: const Icon(LucideIcons.qrCode, size: 16),
+                  label: const Text("Show QR Code", style: TextStyle(fontWeight: FontWeight.bold)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: kBlue,
+                    side: const BorderSide(color: kBlue, width: 2),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            )
+        ],
+      ),
+    );
+  }
+
+  void _showSavedQRDialog(BuildContext context, String qrData, String target, String deliveryMethod) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text("DONATION QR CODE", style: TextStyle(fontWeight: FontWeight.w900, color: kBlue, letterSpacing: 1.0, fontSize: 12)),
+              const SizedBox(height: 16),
+
+              // Generated QR Code
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                    border: Border.all(color: kSlate100, width: 2),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)]
+                ),
+                child: Image.network(
+                  "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$qrData",
+                  width: 150,
+                  height: 150,
+                  loadingBuilder: (context, child, progress) => progress == null ? child : const CircularProgressIndicator(color: kBlue),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              Text(qrData, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kSlate800)),
+              Text(target, style: const TextStyle(color: kSlate500, fontSize: 12)),
+              const SizedBox(height: 16),
+
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(color: kBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                child: Text(
+                  deliveryMethod == 'self' ? "Show this to the NGO drop-off officer." : "Show this to the logistics courier.",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: kBlue, fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ),
+
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: kBlue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 0
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Close", style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
+  Widget _buildDeliveryOption({
+    required String title,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? kEmerald.withOpacity(0.08) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? kEmerald : kSlate100,
+            width: 2,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: isSelected ? kEmerald : kSlate400, size: 28),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: isSelected ? kEmerald : kSlate500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
   // HELPER: SAVE TO FIREBASE (Returns the QR String)
   // ==========================================
-  Future<String> _saveItemDonationToFirebase(Map<String, dynamic> locationData, String item, String imageUrl) async {
+  // Future<String> _saveItemDonationToFirebase(Map<String, dynamic> locationData, String item, String imageUrl) async {
+  //   final user = FirebaseAuth.instance.currentUser;
+  //   if (user == null) return "ERROR";
+  //
+  //   // 1. Generate unique QR Data
+  //   String uniqueId = "KC-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}";
+  //   String qrString = "$uniqueId-${item.substring(0,3).toUpperCase()}";
+  //
+  //   // 2. Add to Firebase
+  //   await FirebaseFirestore.instance
+  //       .collection('users')
+  //       .doc(user.uid)
+  //       .collection('donations')
+  //       .add({
+  //     'id': uniqueId,
+  //     'target': locationData['location'] ?? "Unknown Zone",
+  //     'status': "Pending Drop-off",
+  //     'type': 'item',
+  //     'itemName': item,
+  //     'imageUrl': imageUrl, // Saved here!
+  //     'qrCodeData': qrString, // STORED IN FIREBASE
+  //     'milestones': [
+  //       {'label': 'Pledge Confirmed', 'date': 'Today', 'done': true},
+  //       {'label': 'Drop-off Verified', 'date': '', 'done': false},
+  //       {'label': 'Distributed', 'date': '', 'done': false},
+  //     ],
+  //     'timestamp': FieldValue.serverTimestamp(),
+  //   });
+  //
+  //   return qrString; // Return the string so we can generate the image
+  // }
+  Future<String> _saveItemDonationToFirebase(Map<String, dynamic> locationData, String item, String imageUrl, String deliveryMethod) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return "ERROR";
 
@@ -3095,7 +5527,41 @@ class _ReliefMapState extends State<ReliefMap> {
     String uniqueId = "KC-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}";
     String qrString = "$uniqueId-${item.substring(0,3).toUpperCase()}";
 
-    // 2. Add to Firebase
+    // 2. Setup Milestones based on method
+    String initialStatus = deliveryMethod == 'self' ? "Pending Drop-off" : "Awaiting Courier"; // Changed
+    List<Map<String, dynamic>> finalMilestones = deliveryMethod == 'self'
+        ? [
+      {'label': 'Pledge Confirmed', 'date': 'Today', 'done': true},
+      {'label': 'Drop-off Verified', 'date': '', 'done': false},
+      {'label': 'Distributed', 'date': '', 'done': false},
+    ]
+        : [
+      // --- ADDED THE 4TH MILESTONE HERE FOR COURIER ---
+      {'label': 'Courier Assigned', 'date': 'Today', 'done': true},
+      {'label': 'Picked Up & In Transit', 'date': '', 'done': false},
+      {'label': 'Arrived at NGO Hub', 'date': '', 'done': false},
+      {'label': 'Drop-off Verified', 'date': '', 'done': false},
+      {'label': 'Distributed', 'date': '', 'done': false}// <--- NEW MILESTONE
+    ];
+
+    // 3. Add to Firebase
+    // await FirebaseFirestore.instance
+    //     .collection('users')
+    //     .doc(user.uid)
+    //     .collection('donations')
+    //     .add({
+    //   'id': uniqueId,
+    //   'target': locationData['location'] ?? "Unknown Zone",
+    //   'status': initialStatus, // Dynamic Status
+    //   'type': 'item',
+    //   'deliveryMethod': deliveryMethod, // Save method type to DB
+    //   'itemName': item,
+    //   'imageUrl': imageUrl,
+    //   'qrCodeData': qrString,
+    //   'milestones': finalMilestones, // Dynamic Milestones
+    //   'timestamp': FieldValue.serverTimestamp(),
+    // });
+    // 3. Add to Firebase
     await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
@@ -3103,20 +5569,21 @@ class _ReliefMapState extends State<ReliefMap> {
         .add({
       'id': uniqueId,
       'target': locationData['location'] ?? "Unknown Zone",
-      'status': "Pending Drop-off",
+
+      // ---> ADD THIS LINE HERE <---
+      'category': (locationData['category'] is String) ? locationData['category'] : "Relief Aid",
+
+      'status': initialStatus,
       'type': 'item',
+      'deliveryMethod': deliveryMethod,
       'itemName': item,
-      'imageUrl': imageUrl, // Saved here!
-      'qrCodeData': qrString, // STORED IN FIREBASE
-      'milestones': [
-        {'label': 'Pledge Confirmed', 'date': 'Today', 'done': true},
-        {'label': 'Drop-off Verified', 'date': '', 'done': false},
-        {'label': 'Distributed', 'date': '', 'done': false},
-      ],
+      'imageUrl': imageUrl,
+      'qrCodeData': qrString,
+      'milestones': finalMilestones,
       'timestamp': FieldValue.serverTimestamp(),
     });
 
-    return qrString; // Return the string so we can generate the image
+    return qrString;
   }
 
 // --- HELPER FOR THE ITEM CARDS ---
@@ -3557,11 +6024,495 @@ class _ReliefMapState extends State<ReliefMap> {
   }
 }
 
+class NotificationBell extends StatefulWidget {
+  const NotificationBell({super.key}); // Use super parameters
+
+  @override
+  State<NotificationBell> createState() => _NotificationBellState();
+}
+
+class _NotificationBellState extends State<NotificationBell> {
+  int _seenCount = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
+    if (uid.isEmpty) return const SizedBox();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('donations')
+          .orderBy('timestamp', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        // Use a List of typed Maps to avoid 'dynamic' errors
+        List<Map<String, dynamic>> notifications = [];
+
+        if (snapshot.hasData) {
+          for (var doc in snapshot.data!.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            // Casting milestones safely as a List of dynamic objects
+            final List<dynamic> milestones = data['milestones'] ?? [];
+            final String itemName = data['itemName'] ?? (data['type'] == 'money' ? "Donation" : "Item");
+            final String target = data['target'] ?? "Unknown Hub";
+            final String method = data['deliveryMethod'] ?? "self";
+
+            for (int i = 1; i < milestones.length; i++) {
+              final m = milestones[i] as Map<String, dynamic>; // Cast individual milestone
+              if (m['done'] == true) {
+                notifications.add({
+                  'title': m['label'] ?? 'Update',
+                  'body': method == 'driver'
+                      ? 'Update: Your $itemName for $target has reached this status.'
+                      : 'Update: Your drop-off for $target is verified.',
+                  'icon': method == 'driver' ? LucideIcons.truck : LucideIcons.box,
+                  'color': i == milestones.length - 1 ? Colors.green : Colors.blue,
+                });
+              }
+            }
+          }
+        }
+
+        int currentCount = notifications.length;
+        bool hasUnread = currentCount > _seenCount;
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            GestureDetector(
+              onTap: () {
+                setState(() => _seenCount = currentCount);
+                _showNotificationSheet(context, notifications);
+              },
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: const Icon(LucideIcons.bell, color: Colors.black87, size: 22),
+              ),
+            ),
+
+            if (hasUnread)
+              Positioned(
+                top: -2,
+                right: -2,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18), // Ensure it stays circular
+                  decoration: const BoxDecoration(
+                    color: Colors.redAccent,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      "${currentCount - _seenCount}",
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              )
+          ],
+        );
+      },
+    );
+  }
+
+  void _showNotificationSheet(BuildContext context, List<Map<String, dynamic>> notifications) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildSheetContent(context, notifications),
+    );
+  }
+
+  // Refactored helper to keep the code clean
+  Widget _buildSheetContent(BuildContext context, List<Map<String, dynamic>> notifications) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.6,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(topLeft: Radius.circular(32), topRight: Radius.circular(32)),
+      ),
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: const BorderRadius.only(topLeft: Radius.circular(32), topRight: Radius.circular(32)),
+              border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("Notifications", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: Colors.black87)),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(LucideIcons.x, color: Colors.black54),
+                )
+              ],
+            ),
+          ),
+
+          // List
+          Expanded(
+            child: notifications.isEmpty
+                ? _buildEmptyState()
+                : ListView.builder(
+              padding: const EdgeInsets.all(20),
+              itemCount: notifications.length,
+              itemBuilder: (context, index) {
+                // Reverse index so newest notifications appear first
+                final notif = notifications[notifications.length - 1 - index];
+                return _buildNotificationItem(notif);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(LucideIcons.bellRing, size: 48, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          Text("You're all caught up!", style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNotificationItem(Map<String, dynamic> notif) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade100, width: 2),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: (notif['color'] as Color).withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(notif['icon'], color: notif['color'], size: 20),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(notif['title'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                const SizedBox(height: 4),
+                Text(notif['body'], style: TextStyle(color: Colors.grey.shade600, fontSize: 12, height: 1.4)),
+                const SizedBox(height: 8),
+                Text("Just now", style: TextStyle(color: Colors.grey.shade400, fontSize: 10, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+}
+
+//
+// // ==========================================
+// // 5. AI ADVISOR PAGE (WEB STYLE MATCH)
+// // ==========================================
+// class AiAdvisorPage extends StatefulWidget {
+//   const AiAdvisorPage({super.key});
+//
+//   @override
+//   State<AiAdvisorPage> createState() => _AiAdvisorPageState();
+// }
+//
+// class _AiAdvisorPageState extends State<AiAdvisorPage> {
+//   final TextEditingController _controller = TextEditingController();
+//   final ScrollController _scrollController = ScrollController();
+//   bool _isLoading = false;
+//
+//   // Initial Chat History matching your screenshot
+//   final List<Map<String, dynamic>> _messages = [
+//     {
+//       "role": "ai",
+//       "text": "Selamat Sejahtera! I am KitaCare AI. I can help you find verified NGOs, manage your donation wallet, or find the nearest drop-off point for physical items. What would you like to know?"
+//     }
+//   ];
+//
+//   Future<void> _sendMessage() async {
+//     final text = _controller.text.trim();
+//     if (text.isEmpty) return;
+//
+//     // 1. Add User Message
+//     setState(() {
+//       _messages.add({"role": "user", "text": text});
+//       _isLoading = true;
+//     });
+//     _controller.clear();
+//     _scrollToBottom();
+//
+//     try {
+//       // 2. Call Gemini AI
+//       final apiKey = dotenv.env['GEMINI_ADVISOR_KEY'];
+//       print("API KEY: ${dotenv.env['GEMINI_ADVISOR_KEY']}");
+//       if (apiKey == null) throw "API Key not found";
+//
+//       final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey);
+//
+//       // Context for the AI to act as KitaCare Advisor
+//       final prompt = """
+//       You are KitaCare AI, an expert humanitarian advisor for a Malaysian disaster relief app.
+//       Your tone is professional, empathetic, and distinctively Malaysian (use 'Selamat Sejahtera', 'Rakyat', etc. occasionally).
+//
+//       Key features you know about:
+//       1. Verified NGOs (ROS/SSM registered).
+//       2. KitaCare Wallet (Secure donations).
+//       3. Relief Map (Real-time disaster tracking).
+//       4. Item Donations (Physical goods drop-off).
+//
+//       Answer the user's question briefly and helpfully.
+//       User: $text
+//       """;
+//
+//       final response = await model.generateContent([Content.text(prompt)]);
+//
+//       // 3. Add AI Response
+//       setState(() {
+//         _messages.add({
+//           "role": "ai",
+//           "text": response.text?.replaceAll('*', '') ?? "I apologize, I couldn't process that request."
+//         });
+//         _isLoading = false;
+//       });
+//       _scrollToBottom();
+//
+//     } catch (e) {
+//       setState(() {
+//         _messages.add({"role": "ai", "text": "Sorry, I am having trouble connecting to the server. Please try again."});
+//         _isLoading = false;
+//       });
+//     }
+//   }
+//
+//   void _scrollToBottom() {
+//     WidgetsBinding.instance.addPostFrameCallback((_) {
+//       if (_scrollController.hasClients) {
+//         _scrollController.animateTo(
+//           _scrollController.position.maxScrollExtent,
+//           duration: const Duration(milliseconds: 300),
+//           curve: Curves.easeOut,
+//         );
+//       }
+//     });
+//   }
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     return Container(
+//       color: const Color(0xFFF8FAFC), // Light background like web
+//       child: Column(
+//         children: [
+//           // --- HEADER CARD (Matching Screenshot) ---
+//           Container(
+//             width: double.infinity,
+//             margin: const EdgeInsets.all(20),
+//             padding: const EdgeInsets.all(20),
+//             decoration: BoxDecoration(
+//               color: Colors.white,
+//               borderRadius: BorderRadius.circular(16),
+//               border: Border.all(color: const Color(0xFFE2E8F0)),
+//               boxShadow: [
+//                 BoxShadow(
+//                   color: Colors.black.withOpacity(0.02),
+//                   blurRadius: 10,
+//                   offset: const Offset(0, 4),
+//                 )
+//               ],
+//             ),
+//             child: Row(
+//               children: [
+//                 Container(
+//                   padding: const EdgeInsets.all(10),
+//                   decoration: BoxDecoration(
+//                     color: kEmerald,
+//                     borderRadius: BorderRadius.circular(12),
+//                   ),
+//                   child: const Icon(LucideIcons.messageSquare, color: Colors.white, size: 24),
+//                 ),
+//                 const SizedBox(width: 16),
+//                 Column(
+//                   crossAxisAlignment: CrossAxisAlignment.start,
+//                   children: [
+//                     Text(
+//                       "KitaCare DONOR AI",
+//                       style: GoogleFonts.inter(
+//                         fontSize: 16,
+//                         fontWeight: FontWeight.w800,
+//                         color: kSlate800,
+//                       ),
+//                     ),
+//                     const Text(
+//                       "EXPERT ADVISOR",
+//                       style: TextStyle(
+//                         fontSize: 10,
+//                         fontWeight: FontWeight.w900,
+//                         color: kEmerald,
+//                         letterSpacing: 1.0,
+//                       ),
+//                     ),
+//                   ],
+//                 )
+//               ],
+//             ),
+//           ),
+//
+//           // --- CHAT AREA ---
+//           Expanded(
+//             child: ListView.builder(
+//               controller: _scrollController,
+//               padding: const EdgeInsets.symmetric(horizontal: 20),
+//               itemCount: _messages.length + (_isLoading ? 1 : 0),
+//               itemBuilder: (context, index) {
+//                 if (index == _messages.length) {
+//                   return Align(
+//                     alignment: Alignment.centerLeft,
+//                     child: Container(
+//                       margin: const EdgeInsets.only(bottom: 16),
+//                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+//                       decoration: BoxDecoration(
+//                         color: Colors.white,
+//                         borderRadius: const BorderRadius.only(
+//                           topLeft: Radius.circular(16),
+//                           topRight: Radius.circular(16),
+//                           bottomLeft: Radius.zero,
+//                           bottomRight: Radius.circular(16),
+//                         ),
+//                         border: Border.all(color: const Color(0xFFE2E8F0)),
+//                       ),
+//                       child: const PulsingLoadingText(),
+//                     ),
+//                   );
+//                 }
+//
+//                 final msg = _messages[index];
+//                 final isAi = msg['role'] == 'ai';
+//
+//                 return Align(
+//                   alignment: isAi ? Alignment.centerLeft : Alignment.centerRight,
+//                   child: Container(
+//                     margin: const EdgeInsets.only(bottom: 16),
+//                     padding: const EdgeInsets.all(20),
+//                     constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
+//                     decoration: BoxDecoration(
+//                       color: isAi ? Colors.white : kEmerald,
+//                       borderRadius: BorderRadius.only(
+//                         topLeft: const Radius.circular(16),
+//                         topRight: const Radius.circular(16),
+//                         bottomLeft: isAi ? Radius.zero : const Radius.circular(16),
+//                         bottomRight: isAi ? const Radius.circular(16) : Radius.zero,
+//                       ),
+//                       border: isAi ? Border.all(color: const Color(0xFFE2E8F0)) : null,
+//                       boxShadow: [
+//                         BoxShadow(
+//                           color: Colors.black.withOpacity(0.03),
+//                           blurRadius: 8,
+//                           offset: const Offset(0, 2),
+//                         )
+//                       ],
+//                     ),
+//                     child: Text(
+//                       msg['text'],
+//                       style: GoogleFonts.inter(
+//                         fontSize: 14,
+//                         height: 1.5,
+//                         color: isAi ? kSlate800 : Colors.white,
+//                         fontWeight: isAi ? FontWeight.w400 : FontWeight.w500,
+//                       ),
+//                     ),
+//                   ),
+//                 );
+//               },
+//             ),
+//           ),
+//
+//           // --- INPUT AREA (Matching Screenshot) ---
+//           Container(
+//             padding: const EdgeInsets.all(20),
+//             decoration: BoxDecoration(
+//               color: Colors.white,
+//               border: Border(top: BorderSide(color: kSlate100)),
+//             ),
+//             child: Row(
+//               children: [
+//                 Expanded(
+//                   child: TextField(
+//                     controller: _controller,
+//                     onSubmitted: (_) => _sendMessage(),
+//                     style: const TextStyle(fontSize: 14),
+//                     decoration: InputDecoration(
+//                       hintText: "Ask about donation points or tax certificates...",
+//                       hintStyle: const TextStyle(color: kSlate400, fontSize: 13),
+//                       filled: true,
+//                       fillColor: const Color(0xFFF8FAFC),
+//                       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+//                       border: OutlineInputBorder(
+//                         borderRadius: BorderRadius.circular(12),
+//                         borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+//                       ),
+//                       enabledBorder: OutlineInputBorder(
+//                         borderRadius: BorderRadius.circular(12),
+//                         borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+//                       ),
+//                       focusedBorder: OutlineInputBorder(
+//                         borderRadius: BorderRadius.circular(12),
+//                         borderSide: const BorderSide(color: kEmerald),
+//                       ),
+//                     ),
+//                   ),
+//                 ),
+//                 const SizedBox(width: 12),
+//                 GestureDetector(
+//                   onTap: _sendMessage,
+//                   child: Container(
+//                     padding: const EdgeInsets.all(14),
+//                     decoration: BoxDecoration(
+//                       color: kEmerald,
+//                       borderRadius: BorderRadius.circular(12),
+//                     ),
+//                     child: const Icon(LucideIcons.send, color: Colors.white, size: 20),
+//                   ),
+//                 ),
+//               ],
+//             ),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+// }
 // ==========================================
-// 5. AI ADVISOR PAGE (WEB STYLE MATCH)
+// 5. AI ADVISOR PAGE (DYNAMIC FOR DONOR & NGO)
 // ==========================================
 class AiAdvisorPage extends StatefulWidget {
-  const AiAdvisorPage({super.key});
+  final String role; // 'donor' or 'ngo'
+  const AiAdvisorPage({super.key, required this.role});
 
   @override
   State<AiAdvisorPage> createState() => _AiAdvisorPageState();
@@ -3571,20 +6522,26 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
+  late List<Map<String, dynamic>> _messages;
 
-  // Initial Chat History matching your screenshot
-  final List<Map<String, dynamic>> _messages = [
-    {
-      "role": "ai",
-      "text": "Selamat Sejahtera! I am KitaCare AI. I can help you find verified NGOs, manage your donation wallet, or find the nearest drop-off point for physical items. What would you like to know?"
-    }
-  ];
+  @override
+  void initState() {
+    super.initState();
+    // Initialize the first message based on the role
+    _messages = [
+      {
+        "role": "ai",
+        "text": widget.role == 'ngo'
+            ? "Selamat Sejahtera! I am KitaCare NGO Support AI. I can assist you with managing physical item needs, verifying drop-off receipts, or checking disbursement logs. How can I help your mission today?"
+            : "Selamat Sejahtera! I am KitaCare AI. I can help you find verified NGOs, manage your donation wallet, or find the nearest drop-off point for physical items. What would you like to know?"
+      }
+    ];
+  }
 
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
-    // 1. Add User Message
     setState(() {
       _messages.add({"role": "user", "text": text});
       _isLoading = true;
@@ -3593,31 +6550,18 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
     _scrollToBottom();
 
     try {
-      // 2. Call Gemini AI
       final apiKey = dotenv.env['GEMINI_ADVISOR_KEY'];
-      print("API KEY: ${dotenv.env['GEMINI_ADVISOR_KEY']}");
       if (apiKey == null) throw "API Key not found";
 
       final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey);
 
-      // Context for the AI to act as KitaCare Advisor
-      final prompt = """
-      You are KitaCare AI, an expert humanitarian advisor for a Malaysian disaster relief app.
-      Your tone is professional, empathetic, and distinctively Malaysian (use 'Selamat Sejahtera', 'Rakyat', etc. occasionally).
-      
-      Key features you know about:
-      1. Verified NGOs (ROS/SSM registered).
-      2. KitaCare Wallet (Secure donations).
-      3. Relief Map (Real-time disaster tracking).
-      4. Item Donations (Physical goods drop-off).
-      
-      Answer the user's question briefly and helpfully.
-      User: $text
-      """;
+      // Context changes based on Role
+      final prompt = widget.role == 'ngo'
+          ? """You are KitaCare NGO Support AI. Assist NGOs in Malaysia with disaster relief logistics, verifying donor QR codes, inventory management, and field report generation. Keep responses professional, helpful, and concise. User: $text"""
+          : """You are KitaCare AI, an expert humanitarian advisor for a Malaysian disaster relief app. Assist individual donors with finding verified NGOs, wallet donations, and map tracking. Keep responses professional, helpful, and concise. User: $text""";
 
       final response = await model.generateContent([Content.text(prompt)]);
 
-      // 3. Add AI Response
       setState(() {
         _messages.add({
           "role": "ai",
@@ -3626,7 +6570,6 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
         _isLoading = false;
       });
       _scrollToBottom();
-
     } catch (e) {
       setState(() {
         _messages.add({"role": "ai", "text": "Sorry, I am having trouble connecting to the server. Please try again."});
@@ -3649,11 +6592,15 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isNgo = widget.role == 'ngo';
+    final themeColor = isNgo ? kBlue : kEmerald;
+    final titleText = isNgo ? "KitaCare NGO AI" : "KitaCare DONOR AI";
+
     return Container(
-      color: const Color(0xFFF8FAFC), // Light background like web
+      color: const Color(0xFFF8FAFC),
       child: Column(
         children: [
-          // --- HEADER CARD (Matching Screenshot) ---
+          // --- HEADER CARD ---
           Container(
             width: double.infinity,
             margin: const EdgeInsets.all(20),
@@ -3662,45 +6609,21 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: const Color(0xFFE2E8F0)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                )
-              ],
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
             ),
             child: Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: kEmerald,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  decoration: BoxDecoration(color: themeColor, borderRadius: BorderRadius.circular(12)),
                   child: const Icon(LucideIcons.messageSquare, color: Colors.white, size: 24),
                 ),
                 const SizedBox(width: 16),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      "KitaCare DONOR AI",
-                      style: GoogleFonts.inter(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: kSlate800,
-                      ),
-                    ),
-                    const Text(
-                      "EXPERT ADVISOR",
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        color: kEmerald,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
+                    Text(titleText, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: kSlate800)),
+                    Text("EXPERT ADVISOR", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: themeColor, letterSpacing: 1.0)),
                   ],
                 )
               ],
@@ -3722,12 +6645,7 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(16),
-                          topRight: Radius.circular(16),
-                          bottomLeft: Radius.zero,
-                          bottomRight: Radius.circular(16),
-                        ),
+                        borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16), bottomRight: Radius.circular(16)),
                         border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
                       child: const PulsingLoadingText(),
@@ -3745,7 +6663,7 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
                     padding: const EdgeInsets.all(20),
                     constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
                     decoration: BoxDecoration(
-                      color: isAi ? Colors.white : kEmerald,
+                      color: isAi ? Colors.white : themeColor, // Blue for NGO user texts, Green for Donor
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(16),
                         topRight: const Radius.circular(16),
@@ -3753,13 +6671,7 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
                         bottomRight: isAi ? const Radius.circular(16) : Radius.zero,
                       ),
                       border: isAi ? Border.all(color: const Color(0xFFE2E8F0)) : null,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.03),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        )
-                      ],
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))],
                     ),
                     child: Text(
                       msg['text'],
@@ -3776,13 +6688,10 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
             ),
           ),
 
-          // --- INPUT AREA (Matching Screenshot) ---
+          // --- INPUT AREA ---
           Container(
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: kSlate100)),
-            ),
+            decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: kSlate100))),
             child: Row(
               children: [
                 Expanded(
@@ -3791,23 +6700,14 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
                     onSubmitted: (_) => _sendMessage(),
                     style: const TextStyle(fontSize: 14),
                     decoration: InputDecoration(
-                      hintText: "Ask about donation points or tax certificates...",
+                      hintText: isNgo ? "Ask about receipt verification or logistics..." : "Ask about donation points or tax certificates...",
                       hintStyle: const TextStyle(color: kSlate400, fontSize: 13),
                       filled: true,
                       fillColor: const Color(0xFFF8FAFC),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: kEmerald),
-                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: themeColor)),
                     ),
                   ),
                 ),
@@ -3816,10 +6716,7 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
                   onTap: _sendMessage,
                   child: Container(
                     padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: kEmerald,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    decoration: BoxDecoration(color: themeColor, borderRadius: BorderRadius.circular(12)),
                     child: const Icon(LucideIcons.send, color: Colors.white, size: 20),
                   ),
                 ),
@@ -5096,9 +7993,21 @@ class MyImpactPage extends StatelessWidget {
                         const SizedBox(height: 16),
                         Row(
                           children: [
-                            Expanded(child: _buildStatCard("Cash Support", "RM ${totalCash.toStringAsFixed(2)}", kEmerald)),
+                            Expanded(
+                                child: _buildStatCard(
+                                    "Cash Support",
+                                    "RM ${NumberFormat.compact().format(totalCash)}", // <--- COMPACT FORMAT ADDED HERE
+                                    kEmerald
+                                )
+                            ),
                             const SizedBox(width: 16),
-                            Expanded(child: _buildStatCard("Physical Items", totalItems.toString(), kBlueBrand)),
+                            Expanded(
+                                child: _buildStatCard(
+                                    "Physical Items",
+                                    NumberFormat.compact().format(totalItems), // <--- COMPACT FORMAT ADDED HERE
+                                    kBlueBrand
+                                )
+                            ),
                           ],
                         ),
                         const SizedBox(height: 32),
@@ -5127,20 +8036,51 @@ class MyImpactPage extends StatelessWidget {
                                       DataColumn(label: Text("IMPACT")),
                                       DataColumn(label: Text("ACTION")),
                                     ],
+                                    // rows: docs.map((doc) {
+                                    //   final donationData = doc.data() as Map<String, dynamic>;
+                                    //   final String donationTarget = donationData['target'] ?? "";
+                                    //
+                                    //   // 1. FIRST check if the category is permanently saved in this specific donation record
+                                    //   String matchedCategory = donationData['category']?.toString() ?? "";
+                                    //
+                                    //   // 2. If it's an old donation and missing the category, fallback to the live cache
+                                    //   if (matchedCategory.isEmpty || matchedCategory == "null") {
+                                    //     var foundRelief = activeResults.firstWhere(
+                                    //           (res) => res['location'] == donationTarget,
+                                    //       orElse: () => null,
+                                    //     );
+                                    //
+                                    //     matchedCategory = foundRelief != null
+                                    //         ? foundRelief['category'].toString()
+                                    //         : "Relief Aid";
+                                    //   }
+                                    //
+                                    //   // Ensure 'context' is the FIRST argument
+                                    //   return _buildDataRow(context, donationData, matchedCategory);
+                                    // }).toList(),
                                     rows: docs.map((doc) {
                                       final donationData = doc.data() as Map<String, dynamic>;
-                                      final String donationTarget = donationData['target'] ?? "";
 
-                                      var foundRelief = activeResults.firstWhere(
-                                            (res) => res['location'] == donationTarget,
-                                        orElse: () => null,
-                                      );
+                                      // 1. FETCH EXACT CATEGORY FROM THE DONATION RECORD
+                                      String matchedCategory = donationData['category']?.toString() ?? "";
 
-                                      String matchedCategory = foundRelief != null
-                                          ? foundRelief['category'].toString()
-                                          : "Relief Aid";
+                                      // 2. SMART FALLBACK FOR OLD DATA (Before the category field was added)
+                                      if (matchedCategory.isEmpty || matchedCategory == "null") {
+                                        String itemName = (donationData['itemName'] ?? "").toString().toLowerCase();
 
-                                      // Ensure 'context' is the FIRST argument
+                                        if (itemName.contains("cloth") || itemName.contains("shirt") || itemName.contains("pants")) {
+                                          matchedCategory = "Clothing";
+                                        } else if (itemName.contains("food") || itemName.contains("rice") || itemName.contains("water") || itemName.contains("meal")) {
+                                          matchedCategory = "Food Security";
+                                        } else if (itemName.contains("med") || itemName.contains("kit") || itemName.contains("cream")) {
+                                          matchedCategory = "Medical Aid";
+                                        } else if (itemName.contains("book") || itemName.contains("edu")) {
+                                          matchedCategory = "Education";
+                                        } else {
+                                          matchedCategory = "Relief Aid"; // Final default
+                                        }
+                                      }
+
                                       return _buildDataRow(context, donationData, matchedCategory);
                                     }).toList(),
                                   ),
@@ -5264,8 +8204,29 @@ class MyImpactPage extends StatelessWidget {
           ),
         ),
       ),
-      DataCell(Text(dynamicCause, style: const TextStyle(fontWeight: FontWeight.w600))),
-      DataCell(Text(data['ngo'] ?? "MERCY Malaysia", style: const TextStyle(color: kSlate500))),
+      // TO THIS:
+      DataCell(
+        SizedBox(
+          width: 140, // Forces the text to wrap instead of stretching horizontally
+          child: Text(
+            dynamicCause,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+      DataCell(
+        SizedBox(
+          width: 100, // Keeps the NGO name compact
+          child: Text(
+            data['ngo'] ?? "MERCY Malaysia",
+            style: const TextStyle(color: kSlate500),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
       DataCell(Text(impactText, style: const TextStyle(fontWeight: FontWeight.bold))),
       DataCell(
         ElevatedButton.icon(
