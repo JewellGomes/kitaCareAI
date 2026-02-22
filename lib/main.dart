@@ -2445,19 +2445,461 @@ class CourierDashboard extends StatefulWidget {
   State<CourierDashboard> createState() => _CourierDashboardState();
 }
 
+// class _CourierDashboardState extends State<CourierDashboard> {
+//   final TextEditingController _qrController = TextEditingController();
+//   bool _isProcessing = false;
+//
+//   // Simulate scanning by pulling data from Firebase based on QR String
+//   // Simulate scanning by pulling data from Firebase based on QR String
+//   Future<void> _processScan() async {
+//     String qrData = _qrController.text.trim();
+//     if (qrData.isEmpty) return;
+//
+//     setState(() => _isProcessing = true);
+//
+//     try {
+//       // Look across ALL users for a donation with this specific QR code
+//       var query = await FirebaseFirestore.instance
+//           .collectionGroup('donations')
+//           .where('qrCodeData', isEqualTo: qrData)
+//           .get();
+//
+//       if (query.docs.isEmpty) {
+//         if (mounted) {
+//           ScaffoldMessenger.of(context).showSnackBar(
+//               const SnackBar(content: Text("Invalid QR Code. Package not found in system."))
+//           );
+//         }
+//         setState(() => _isProcessing = false);
+//         return;
+//       }
+//
+//       // We found the package!
+//       var doc = query.docs.first;
+//       var data = doc.data();
+//
+//       // --- NEW VALIDATION: CHECK IF ALREADY DELIVERED ---
+//       List<dynamic> milestones = data['milestones'] ?? [];
+//       bool isPickedUp = milestones.length > 1 && milestones[1]['done'] == true;
+//       bool isArrivedAtHub = milestones.length > 2 && milestones[2]['done'] == true;
+//
+//       // If both conditions are true, the package is already delivered!
+//       if (isPickedUp && isArrivedAtHub) {
+//         setState(() => _isProcessing = false);
+//         _qrController.clear();
+//
+//         if (mounted) {
+//           Navigator.pop(context); // Close the scan dialog
+//           ScaffoldMessenger.of(context).showSnackBar(
+//             SnackBar(
+//               content: const Text("Action Denied: This package has already been delivered to the NGO Hub!"),
+//               backgroundColor: Colors.redAccent,
+//               behavior: SnackBarBehavior.floating,
+//               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+//             ),
+//           );
+//         }
+//         return; // <--- STOP HERE. Do not go into the next dialogue!
+//       }
+//       // --------------------------------------------------
+//
+//       setState(() => _isProcessing = false);
+//       _qrController.clear();
+//       if (mounted) Navigator.pop(context); // Close scan dialog
+//
+//       // Open Action Dialog
+//       _showPackageActionDialog(doc.reference, data);
+//
+//     } catch (e) {
+//       debugPrint("Scan Error: $e");
+//       setState(() => _isProcessing = false);
+//     }
+//   }
+//
+//   // --- NEW: OPEN CAMERA SCANNER ---
+//   void _openCameraScanner() async {
+//     // 1. Close the manual entry dialog first
+//     Navigator.pop(context);
+//
+//     // 2. Open the full-screen camera
+//     final scannedCode = await Navigator.push(
+//       context,
+//       MaterialPageRoute(builder: (context) => const QRScannerScreen()),
+//     );
+//
+//     // 3. If a code was scanned, process it automatically!
+//     if (scannedCode != null && scannedCode is String) {
+//       _qrController.text = scannedCode;
+//       _processScan();
+//     }
+//   }
+//
+//   void _showScanDialog() {
+//     showDialog(
+//       context: context,
+//       builder: (context) => Dialog(
+//         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+//         backgroundColor: Colors.white,
+//         child: SingleChildScrollView(
+//           child: Padding(
+//             padding: const EdgeInsets.all(24.0),
+//             child: Column(
+//               mainAxisSize: MainAxisSize.min,
+//               children: [
+//                 const Icon(LucideIcons.scanLine, size: 48, color: Colors.orange),
+//                 const SizedBox(height: 16),
+//                 const Text("Scan Package QR", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
+//                 const Text("Use your camera or enter the ID manually.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 12)),
+//
+//                 const SizedBox(height: 24),
+//
+//                 // --- CAMERA SCAN BUTTON ---
+//                 SizedBox(
+//                   width: double.infinity,
+//                   height: 56,
+//                   child: ElevatedButton.icon(
+//                     style: ElevatedButton.styleFrom(
+//                         backgroundColor: Colors.orange.shade700,
+//                         foregroundColor: Colors.white,
+//                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+//                     ),
+//                     icon: const Icon(LucideIcons.camera),
+//                     onPressed: _openCameraScanner,
+//                     label: const Text("Open Camera Scanner", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+//                   ),
+//                 ),
+//
+//                 const SizedBox(height: 24),
+//                 const Row(
+//                   children: [
+//                     Expanded(child: Divider()),
+//                     Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text("OR MANUAL ENTRY", style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold))),
+//                     Expanded(child: Divider()),
+//                   ],
+//                 ),
+//                 const SizedBox(height: 24),
+//
+//                 TextField(
+//                   controller: _qrController,
+//                   decoration: InputDecoration(
+//                     hintText: "e.g., KC-12345-TEN",
+//                     filled: true,
+//                     fillColor: kSlate50,
+//                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+//                   ),
+//                 ),
+//                 const SizedBox(height: 16),
+//                 SizedBox(
+//                   width: double.infinity,
+//                   height: 50,
+//                   child: ElevatedButton(
+//                     style: ElevatedButton.styleFrom(
+//                         backgroundColor: kSlate100,
+//                         foregroundColor: kSlate800,
+//                         elevation: 0,
+//                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+//                     ),
+//                     onPressed: _isProcessing ? null : _processScan,
+//                     child: _isProcessing ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text("Find via ID", style: TextStyle(fontWeight: FontWeight.bold)),
+//                   ),
+//                 )
+//               ],
+//             ),
+//           ),
+//         ),
+//       ),
+//     );
+//   }
+//   // The Dialog where Courier Updates the Package Status
+//   // The Dialog where Courier Updates the Package Status
+//   // The Dialog where Courier Updates the Package Status
+//   void _showPackageActionDialog(DocumentReference docRef, Map<String, dynamic> data) {
+//     // 1. Create a modifiable copy of the milestones array from Firebase
+//     List<dynamic> milestones = List.from(data['milestones'] ?? []);
+//
+//     // 2. Determine Current State safely based on array length
+//     bool isPickedUp = milestones.length > 1 && milestones[1]['done'] == true;
+//     bool isDroppedOff = milestones.length > 3 && milestones[3]['done'] == true;
+//
+//     XFile? capturedImage;
+//
+//     showDialog(
+//         context: context,
+//         barrierDismissible: false,
+//         builder: (context) {
+//           return StatefulBuilder(
+//               builder: (context, setDialogState) {
+//                 return Dialog(
+//                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+//                   backgroundColor: Colors.white,
+//                   child: SingleChildScrollView(
+//                     child: Padding(
+//                       padding: const EdgeInsets.all(24.0),
+//                       child: Column(
+//                         mainAxisSize: MainAxisSize.min,
+//                         children: [
+//                           Container(
+//                             padding: const EdgeInsets.all(12),
+//                             decoration: BoxDecoration(color: Colors.orange.shade50, shape: BoxShape.circle),
+//                             child: Icon(LucideIcons.package, color: Colors.orange.shade700, size: 32),
+//                           ),
+//                           const SizedBox(height: 16),
+//                           Text(data['itemName'] ?? "Package", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
+//                           Text("Target: ${data['target']}", style: const TextStyle(color: Colors.grey)),
+//                           const Divider(height: 32),
+//
+//                           if (isDroppedOff) ...[
+//                             const Icon(LucideIcons.checkCircle, color: kEmerald, size: 48),
+//                             const SizedBox(height: 12),
+//                             const Text("Delivery Completed", style: TextStyle(color: kEmerald, fontWeight: FontWeight.bold)),
+//                             const SizedBox(height: 24),
+//                             SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Close")))
+//                           ]
+//                           else if (!isPickedUp) ...[
+//                             // --- ACTION: PICK UP ---
+//                             const Text("Action Required: Pick-up from Donor", style: TextStyle(fontWeight: FontWeight.bold)),
+//                             const SizedBox(height: 24),
+//                             SizedBox(
+//                               width: double.infinity,
+//                               height: 50,
+//                               child: ElevatedButton.icon(
+//                                 icon: const Icon(LucideIcons.truck),
+//                                 label: const Text("Confirm Pick-Up"),
+//                                 style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white),
+//                                 onPressed: () async {
+//                                   // 1. Update Milestone 1 locally
+//                                   if (milestones.length > 1) {
+//                                     milestones[1]['done'] = true;
+//                                     milestones[1]['date'] = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
+//                                   }
+//
+//                                   // 2. Push to Firebase
+//                                   await docRef.update({
+//                                     'milestones': milestones,
+//                                     'status': 'Picked Up & In Transit'
+//                                   });
+//
+//                                   if (context.mounted) {
+//                                     // --- CRITICAL FIX HERE ---
+//                                     final messenger = ScaffoldMessenger.of(context);
+//                                     Navigator.pop(context);
+//
+//                                     messenger.showSnackBar(const SnackBar(
+//                                       content: Text("Package Picked Up! Donor notified."),
+//                                       backgroundColor: kEmerald,
+//                                     ));
+//                                   }
+//                                 },
+//                               ),
+//                             )
+//                           ]
+//                           else ...[
+//                               // --- ACTION: DROP OFF (REQUIRES PHOTO) ---
+//                               const Text("Action Required: Drop-off at NGO Hub", style: TextStyle(fontWeight: FontWeight.bold)),
+//                               const SizedBox(height: 16),
+//
+//                               // Photo Area
+//                               GestureDetector(
+//                                 onTap: () async {
+//                                   // --- ACTUAL CAMERA CAPTURE ---
+//                                   final ImagePicker picker = ImagePicker();
+//                                   final XFile? photo = await picker.pickImage(
+//                                     source: ImageSource.camera,
+//                                     imageQuality: 70, // Compresses slightly to save memory
+//                                   );
+//
+//                                   if (photo != null) {
+//                                     setDialogState(() => capturedImage = photo);
+//                                   }
+//                                 },
+//                                 child: Container(
+//                                   height: 150,
+//                                   width: double.infinity,
+//                                   decoration: BoxDecoration(
+//                                       color: kSlate50,
+//                                       border: Border.all(color: capturedImage != null ? kEmerald : kSlate300, width: 2),
+//                                       borderRadius: BorderRadius.circular(16)
+//                                   ),
+//                                   // --- ACTUAL IMAGE DISPLAY ---
+//                                   child: capturedImage != null
+//                                       ? ClipRRect(
+//                                     borderRadius: BorderRadius.circular(14),
+//                                     child: Image.file(File(capturedImage!.path), fit: BoxFit.cover, width: double.infinity),
+//                                   )
+//                                       : Column(
+//                                     mainAxisAlignment: MainAxisAlignment.center,
+//                                     children: [
+//                                       Icon(LucideIcons.camera, color: Colors.orange.shade700, size: 32),
+//                                       const SizedBox(height: 8),
+//                                       const Text("Tap to take proof photo", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+//                                     ],
+//                                   ),
+//                                 ),
+//                               ),
+//
+//                               const SizedBox(height: 24),
+//
+//                               SizedBox(
+//                                 width: double.infinity,
+//                                 height: 50,
+//                                 child: ElevatedButton.icon(
+//                                   icon: const Icon(LucideIcons.checkSquare),
+//                                   label: const Text("Confirm Drop-Off"),
+//                                   style: ElevatedButton.styleFrom(backgroundColor: kEmerald, foregroundColor: Colors.white),
+//                                   onPressed: capturedImage == null ? null : () async {
+//                                     String simulatedProofUrl = "https://images.unsplash.com/photo-1577705998148-6da4f3963bc8?w=400";
+//
+//                                     // Get the logged-in courier's ID
+//                                     final String courierUid = FirebaseAuth.instance.currentUser?.uid ?? "";
+//
+//
+//                                     if (milestones.length > 3) {
+//                                       String currentTime = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
+//
+//                                       // 1. Mark 'Arrived at Hub' as done
+//                                       milestones[2]['done'] = true;
+//                                       milestones[2]['date'] = currentTime;
+//                                     }
+//
+//
+//                                     // Push to Firebase and link the package to THIS driver
+//                                     await docRef.update({
+//                                       'milestones': milestones,
+//                                       'status': 'Drop-off Verified',
+//                                       'proofOfDeliveryUrl': simulatedProofUrl,
+//                                       'courierId': courierUid,
+//                                     });
+//
+//                                     if (context.mounted) {
+//                                       // --- CRITICAL FIX HERE ---
+//                                       final messenger = ScaffoldMessenger.of(context);
+//                                       Navigator.pop(context);
+//
+//                                       messenger.showSnackBar(const SnackBar(
+//                                         content: Text("Drop-off Verified! Photo uploaded."),
+//                                         backgroundColor: kEmerald,
+//                                       ));
+//                                     }
+//                                   },
+//                                 ),
+//                               )
+//                             ],
+//
+//                           // Cancel button
+//                           if (!isDroppedOff)
+//                             TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.grey)))
+//                         ],
+//                       ),
+//                     ),
+//                   ),
+//                 );
+//               }
+//           );
+//         }
+//     );
+//   }
+//
+//   @override
+//   Widget build(BuildContext context) {
+//
+//
+//     final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? "";
+//     return Scaffold(
+//       backgroundColor: Colors.white,
+//       body: SafeArea(
+//         child: SingleChildScrollView(
+//           padding: const EdgeInsets.all(24),
+//           child: Column(
+//             crossAxisAlignment: CrossAxisAlignment.start,
+//             children: [
+//               Text("Logistics Hub", style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w900, color: kSlate800)),
+//               const Text("Courier Access Terminal", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
+//               const SizedBox(height: 32),
+//
+//               // Big Scan Button
+//               GestureDetector(
+//                 onTap: _showScanDialog,
+//                 child: Container(
+//                   width: double.infinity,
+//                   padding: const EdgeInsets.symmetric(vertical: 40),
+//                   decoration: BoxDecoration(
+//                       color: Colors.orange.shade700,
+//                       borderRadius: BorderRadius.circular(24),
+//                       boxShadow: [BoxShadow(color: Colors.orange.shade200, blurRadius: 20, offset: const Offset(0, 10))]
+//                   ),
+//                   child: Column(
+//                     children: [
+//                       const Icon(LucideIcons.scanLine, color: Colors.white, size: 64),
+//                       const SizedBox(height: 16),
+//                       Text("SCAN PACKAGE QR", style: GoogleFonts.inter(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+//                       const Text("To Pickup or Drop-off", style: TextStyle(color: Colors.white70)),
+//                     ],
+//                   ),
+//                 ),
+//               ),
+//
+//               const SizedBox(height: 40),
+//               const Text("System Status", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+//               const SizedBox(height: 16),
+//
+//               Row(
+//                 children: [
+//                   Expanded(
+//                     child: StreamBuilder<QuerySnapshot>(
+//                       stream: FirebaseFirestore.instance
+//                           .collectionGroup('donations')
+//                           .where('status', isEqualTo: 'Drop-off Verified')
+//                           .where('courierId', isEqualTo: currentUid) // <--- ADD THIS FILTER
+//                           .snapshots(),
+//                       builder: (context, snapshot) {
+//                         String deliveredCount = "...";
+//
+//                         if (snapshot.hasData) {
+//                           deliveredCount = snapshot.data!.docs.length.toString();
+//                         } else if (snapshot.hasError) {
+//                           deliveredCount = "0";
+//                         }
+//
+//                         return _statBox("DELIVERED", deliveredCount, kEmerald);
+//                       },
+//                     ),
+//                   ),
+//                 ],
+//               )
+//             ],
+//           ),
+//         ),
+//       ),
+//     );
+//   }
+//
+//   Widget _statBox(String label, String val, Color color) {
+//     return Container(
+//       padding: const EdgeInsets.all(20),
+//       decoration: BoxDecoration(color: kSlate50, borderRadius: BorderRadius.circular(16), border: Border.all(color: kSlate100)),
+//       child: Column(
+//           crossAxisAlignment: CrossAxisAlignment.start,
+//           children: [
+//             Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey)),
+//             const SizedBox(height: 8),
+//             Text(val, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: color)),
+//           ]
+//       ),
+//     );
+//   }
+// }
 class _CourierDashboardState extends State<CourierDashboard> {
   final TextEditingController _qrController = TextEditingController();
   bool _isProcessing = false;
 
-  // Simulate scanning by pulling data from Firebase based on QR String
-  Future<void> _processScan() async {
+  // --- ADDED closeDialog FLAG TO PREVENT BLACK SCREEN ---
+  Future<void> _processScan({bool closeDialog = true}) async {
     String qrData = _qrController.text.trim();
     if (qrData.isEmpty) return;
 
     setState(() => _isProcessing = true);
 
     try {
-      // Look across ALL users for a donation with this specific QR code
       var query = await FirebaseFirestore.instance
           .collectionGroup('donations')
           .where('qrCodeData', isEqualTo: qrData)
@@ -2465,19 +2907,70 @@ class _CourierDashboardState extends State<CourierDashboard> {
 
       if (query.docs.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid QR Code. Package not found in system.")));
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Invalid QR Code. Package not found in system."))
+          );
         }
         setState(() => _isProcessing = false);
         return;
       }
 
-      // We found the package!
       var doc = query.docs.first;
       var data = doc.data();
 
+      // ========================================================
+      // NEW RESTRICTION: PREVENT SCANNING SELF DROP-OFF PACKAGES
+      // ========================================================
+      // If the field doesn't exist, or it isn't "driver", it's a self drop-off.
+      bool isCourierDelivery = data.containsKey('deliveryMethod') && data['deliveryMethod'] == 'driver';
+
+      if (!isCourierDelivery) {
+        setState(() => _isProcessing = false);
+        _qrController.clear();
+
+        if (mounted) {
+          if (closeDialog) Navigator.pop(context); // Close dialog if manual entry
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text("Scan Denied: This package is for Self Drop-off, not Courier Pick-up."),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          );
+        }
+        return;
+      }
+      // ========================================================
+
+      List<dynamic> milestones = data['milestones'] ?? [];
+      bool isPickedUp = milestones.length > 1 && milestones[1]['done'] == true;
+      bool isArrivedAtHub = milestones.length > 2 && milestones[2]['done'] == true;
+
+      if (isPickedUp && isArrivedAtHub) {
+        setState(() => _isProcessing = false);
+        _qrController.clear();
+
+        if (mounted) {
+          if (closeDialog) Navigator.pop(context); // Close only if instructed
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text("Action Denied: This package has already been delivered to the NGO Hub!"),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          );
+        }
+        return;
+      }
+
       setState(() => _isProcessing = false);
       _qrController.clear();
-      if (mounted) Navigator.pop(context); // Close scan dialog
+
+      if (mounted && closeDialog) {
+        Navigator.pop(context); // Close scan dialog only if instructed
+      }
 
       // Open Action Dialog
       _showPackageActionDialog(doc.reference, data);
@@ -2488,7 +2981,6 @@ class _CourierDashboardState extends State<CourierDashboard> {
     }
   }
 
-  // --- NEW: OPEN CAMERA SCANNER ---
   void _openCameraScanner() async {
     // 1. Close the manual entry dialog first
     Navigator.pop(context);
@@ -2499,10 +2991,10 @@ class _CourierDashboardState extends State<CourierDashboard> {
       MaterialPageRoute(builder: (context) => const QRScannerScreen()),
     );
 
-    // 3. If a code was scanned, process it automatically!
+    // 3. Process automatically, but tell it NOT to pop the dialog again!
     if (scannedCode != null && scannedCode is String) {
       _qrController.text = scannedCode;
-      _processScan();
+      _processScan(closeDialog: false); // <--- CRITICAL FIX HERE
     }
   }
 
@@ -2512,80 +3004,78 @@ class _CourierDashboardState extends State<CourierDashboard> {
       builder: (context) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         backgroundColor: Colors.white,
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(LucideIcons.scanLine, size: 48, color: Colors.orange),
-              const SizedBox(height: 16),
-              const Text("Scan Package QR", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
-              const Text("Use your camera or enter the ID manually.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 12)),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(LucideIcons.scanLine, size: 48, color: Colors.orange),
+                const SizedBox(height: 16),
+                const Text("Scan Package QR", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
+                const Text("Use your camera or enter the ID manually.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 12)),
 
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
 
-              // --- CAMERA SCAN BUTTON ---
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange.shade700,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange.shade700,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                    ),
+                    icon: const Icon(LucideIcons.camera),
+                    onPressed: _openCameraScanner,
+                    label: const Text("Open Camera Scanner", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   ),
-                  icon: const Icon(LucideIcons.camera),
-                  onPressed: _openCameraScanner,
-                  label: const Text("Open Camera Scanner", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
-              ),
 
-              const SizedBox(height: 24),
-              const Row(
-                children: [
-                  Expanded(child: Divider()),
-                  Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text("OR MANUAL ENTRY", style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold))),
-                  Expanded(child: Divider()),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              TextField(
-                controller: _qrController,
-                decoration: InputDecoration(
-                  hintText: "e.g., KC-12345-TEN",
-                  filled: true,
-                  fillColor: kSlate50,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                const SizedBox(height: 24),
+                const Row(
+                  children: [
+                    Expanded(child: Divider()),
+                    Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text("OR MANUAL ENTRY", style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold))),
+                    Expanded(child: Divider()),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: kSlate100,
-                      foregroundColor: kSlate800,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                const SizedBox(height: 24),
+
+                TextField(
+                  controller: _qrController,
+                  decoration: InputDecoration(
+                    hintText: "e.g., KC-12345-TEN",
+                    filled: true,
+                    fillColor: kSlate50,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                   ),
-                  onPressed: _isProcessing ? null : _processScan,
-                  child: _isProcessing ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text("Find via ID", style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
-              )
-            ],
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: kSlate100,
+                        foregroundColor: kSlate800,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                    ),
+                    onPressed: _isProcessing ? null : () => _processScan(closeDialog: true), // <--- CRITICAL FIX HERE
+                    child: _isProcessing ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text("Find via ID", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                )
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // The Dialog where Courier Updates the Package Status
   void _showPackageActionDialog(DocumentReference docRef, Map<String, dynamic> data) {
-    List<dynamic> milestones = data['milestones'] ?? [];
-
-    // Determine Current State
+    List<dynamic> milestones = List.from(data['milestones'] ?? []);
     bool isPickedUp = milestones.length > 1 && milestones[1]['done'] == true;
     bool isDroppedOff = milestones.length > 3 && milestones[3]['done'] == true;
 
@@ -2600,127 +3090,137 @@ class _CourierDashboardState extends State<CourierDashboard> {
                 return Dialog(
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                   backgroundColor: Colors.white,
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: Colors.orange.shade50, shape: BoxShape.circle),
-                          child: Icon(LucideIcons.package, color: Colors.orange.shade700, size: 32),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(data['itemName'] ?? "Package", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
-                        Text("Target: ${data['target']}", style: const TextStyle(color: Colors.grey)),
-                        const Divider(height: 32),
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(color: Colors.orange.shade50, shape: BoxShape.circle),
+                            child: Icon(LucideIcons.package, color: Colors.orange.shade700, size: 32),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(data['itemName'] ?? "Package", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
+                          Text("Target: ${data['target']}", style: const TextStyle(color: Colors.grey)),
+                          const Divider(height: 32),
 
-                        if (isDroppedOff) ...[
-                          const Icon(LucideIcons.checkCircle, color: kEmerald, size: 48),
-                          const SizedBox(height: 12),
-                          const Text("Delivery Completed", style: TextStyle(color: kEmerald, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 24),
-                          SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Close")))
-                        ]
-                        else if (!isPickedUp) ...[
-                          // --- ACTION: PICK UP ---
-                          const Text("Action Required: Pick-up from Donor", style: TextStyle(fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 24),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 50,
-                            child: ElevatedButton.icon(
-                              icon: const Icon(LucideIcons.truck),
-                              label: const Text("Confirm Pick-Up"),
-                              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white),
-                              onPressed: () async {
-                                // Update Firestore (Milestone 1)
-                                milestones[1]['done'] = true;
-                                await docRef.update({
-                                  'milestones': milestones,
-                                  'status': 'Picked Up & In Transit'
-                                });
-                                if (context.mounted) {
-                                  Navigator.pop(context);
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Package Picked Up! Donor notified.")));
-                                }
-                              },
-                            ),
-                          )
-                        ]
-                        else ...[
-                            // --- ACTION: DROP OFF (REQUIRES PHOTO) ---
-                            const Text("Action Required: Drop-off at NGO Hub", style: TextStyle(fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 16),
-
-                            // Photo Area
-                            GestureDetector(
-                              onTap: () async {
-                                final ImagePicker picker = ImagePicker();
-                                final XFile? photo = await picker.pickImage(source: ImageSource.camera);
-                                if (photo != null) setDialogState(() => capturedImage = photo);
-                              },
-                              child: Container(
-                                height: 150,
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                    color: kSlate50,
-                                    border: Border.all(color: capturedImage != null ? kEmerald : kSlate300, width: 2),
-                                    borderRadius: BorderRadius.circular(16)
-                                ),
-                                child: capturedImage != null
-                                    ? ClipRRect(borderRadius: BorderRadius.circular(14), child: Image.file(File(capturedImage!.path), fit: BoxFit.cover))
-                                    : Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(LucideIcons.camera, color: Colors.orange.shade700, size: 32),
-                                    const SizedBox(height: 8),
-                                    const Text("Tap to take proof photo", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
-                              ),
-                            ),
-
+                          if (isDroppedOff) ...[
+                            const Icon(LucideIcons.checkCircle, color: kEmerald, size: 48),
+                            const SizedBox(height: 12),
+                            const Text("Delivery Completed", style: TextStyle(color: kEmerald, fontWeight: FontWeight.bold)),
                             const SizedBox(height: 24),
-
+                            SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Close")))
+                          ]
+                          else if (!isPickedUp) ...[
+                            const Text("Action Required: Pick-up from Donor", style: TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 24),
                             SizedBox(
                               width: double.infinity,
                               height: 50,
                               child: ElevatedButton.icon(
-                                icon: const Icon(LucideIcons.checkSquare),
-                                label: const Text("Confirm Drop-Off"),
-                                style: ElevatedButton.styleFrom(backgroundColor: kEmerald, foregroundColor: Colors.white),
-                                onPressed: capturedImage == null ? null : () async {
+                                icon: const Icon(LucideIcons.truck),
+                                label: const Text("Confirm Pick-Up"),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white),
+                                onPressed: () async {
+                                  // --- CRITICAL FIX: Safe Navigator Storage ---
+                                  final nav = Navigator.of(context);
+                                  final messenger = ScaffoldMessenger.of(context);
 
-                                  // To simulate storage upload, we use a placeholder success image URL.
-                                  // In production: upload `capturedImage` to Firebase Storage, get URL, save to DB.
-                                  String simulatedProofUrl = "https://images.unsplash.com/photo-1577705998148-6da4f3963bc8?w=400";
-
-                                  // Update Firestore (Milestones 2 and 3)
-                                  if (milestones.length > 3) {
-                                    milestones[2]['done'] = true; // Arrived at Hub
-                                    milestones[3]['done'] = true; // Verified
+                                  if (milestones.length > 1) {
+                                    milestones[1]['done'] = true;
+                                    milestones[1]['date'] = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
                                   }
 
                                   await docRef.update({
                                     'milestones': milestones,
-                                    'status': 'Arrived at NGO Hub',
-                                    'proofOfDeliveryUrl': simulatedProofUrl,
+                                    'status': 'Picked Up & In Transit'
                                   });
 
-                                  if (context.mounted) {
-                                    Navigator.pop(context);
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Drop-off Verified! Photo uploaded.")));
-                                  }
+                                  nav.pop();
+                                  messenger.showSnackBar(const SnackBar(
+                                    content: Text("Package Picked Up! Donor notified."),
+                                    backgroundColor: kEmerald,
+                                  ));
                                 },
                               ),
                             )
-                          ],
+                          ]
+                          else ...[
+                              const Text("Action Required: Drop-off at NGO Hub", style: TextStyle(fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 16),
 
-                        // Cancel button
-                        if (!isDroppedOff)
-                          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.grey)))
-                      ],
+                              GestureDetector(
+                                onTap: () async {
+                                  final ImagePicker picker = ImagePicker();
+                                  final XFile? photo = await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
+                                  if (photo != null) setDialogState(() => capturedImage = photo);
+                                },
+                                child: Container(
+                                  height: 150,
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                      color: kSlate50,
+                                      border: Border.all(color: capturedImage != null ? kEmerald : kSlate300, width: 2),
+                                      borderRadius: BorderRadius.circular(16)
+                                  ),
+                                  child: capturedImage != null
+                                      ? ClipRRect(borderRadius: BorderRadius.circular(14), child: Image.file(File(capturedImage!.path), fit: BoxFit.cover, width: double.infinity))
+                                      : Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(LucideIcons.camera, color: Colors.orange.shade700, size: 32),
+                                      const SizedBox(height: 8),
+                                      const Text("Tap to take proof photo", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 24),
+
+                              SizedBox(
+                                width: double.infinity,
+                                height: 50,
+                                child: ElevatedButton.icon(
+                                  icon: const Icon(LucideIcons.checkSquare),
+                                  label: const Text("Confirm Drop-Off"),
+                                  style: ElevatedButton.styleFrom(backgroundColor: kEmerald, foregroundColor: Colors.white),
+                                  onPressed: capturedImage == null ? null : () async {
+                                    // --- CRITICAL FIX: Safe Navigator Storage ---
+                                    final nav = Navigator.of(context);
+                                    final messenger = ScaffoldMessenger.of(context);
+
+                                    String simulatedProofUrl = "https://images.unsplash.com/photo-1577705998148-6da4f3963bc8?w=400";
+                                    final String courierUid = FirebaseAuth.instance.currentUser?.uid ?? "";
+
+                                    if (milestones.length > 3) {
+                                      milestones[2]['done'] = true;
+                                      milestones[2]['date'] = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
+                                    }
+
+                                    await docRef.update({
+                                      'milestones': milestones,
+                                      'status': 'Drop-off Verified',
+                                      'proofOfDeliveryUrl': simulatedProofUrl,
+                                      'courierId': courierUid,
+                                    });
+
+                                    nav.pop();
+                                    messenger.showSnackBar(const SnackBar(
+                                      content: Text("Drop-off Verified! Photo uploaded."),
+                                      backgroundColor: kEmerald,
+                                    ));
+                                  },
+                                ),
+                              )
+                            ],
+
+                          if (!isDroppedOff)
+                            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.grey)))
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -2732,6 +3232,7 @@ class _CourierDashboardState extends State<CourierDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? "";
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -2744,7 +3245,6 @@ class _CourierDashboardState extends State<CourierDashboard> {
               const Text("Courier Access Terminal", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
               const SizedBox(height: 32),
 
-              // Big Scan Button
               GestureDetector(
                 onTap: _showScanDialog,
                 child: Container(
@@ -2772,9 +3272,24 @@ class _CourierDashboardState extends State<CourierDashboard> {
 
               Row(
                 children: [
-                  Expanded(child: _statBox("ACTIVE TASKS", "2", Colors.orange.shade700)),
-                  const SizedBox(width: 16),
-                  Expanded(child: _statBox("DELIVERED", "14", kEmerald)),
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collectionGroup('donations')
+                          .where('status', isEqualTo: 'Drop-off Verified')
+                          .where('courierId', isEqualTo: currentUid)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        String deliveredCount = "...";
+                        if (snapshot.hasData) {
+                          deliveredCount = snapshot.data!.docs.length.toString();
+                        } else if (snapshot.hasError) {
+                          deliveredCount = "0";
+                        }
+                        return _statBox("DELIVERED", deliveredCount, kEmerald);
+                      },
+                    ),
+                  ),
                 ],
               )
             ],
@@ -4011,19 +4526,36 @@ class _ReliefMapState extends State<ReliefMap> {
                                 //   'timestamp': FieldValue.serverTimestamp(),
                                 // });
                                 // 6. CREATE TRACKING RECORD
+                                // await userRef.collection('donations').add({
+                                //   'id': "KC-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}",
+                                //   'target': item['location'] ?? "Relief Project",
+                                //
+                                //   // ---> ADD THIS ONE LINE <---
+                                //   'category': item['category'] ?? "Relief Aid",
+                                //
+                                //   'status': "Processing",
+                                //   'type': 'money',
+                                //   'amount': donateAmount,
+                                //   'imageUrl': imageToSave,
+                                //   'milestones': [
+                                //     {'label': 'Payment Verified', 'date': 'Today', 'done': true},
+                                //     {'label': 'NGO Allocation', 'date': 'Pending', 'done': false},
+                                //     {'label': 'Final Disbursement', 'date': '', 'done': false},
+                                //   ],
+                                //   'timestamp': FieldValue.serverTimestamp(),
+                                // });
+                                String todayDate = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
                                 await userRef.collection('donations').add({
                                   'id': "KC-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}",
                                   'target': item['location'] ?? "Relief Project",
-
-                                  // ---> ADD THIS ONE LINE <---
                                   'category': item['category'] ?? "Relief Aid",
-
                                   'status': "Processing",
                                   'type': 'money',
                                   'amount': donateAmount,
                                   'imageUrl': imageToSave,
                                   'milestones': [
-                                    {'label': 'Payment Verified', 'date': 'Today', 'done': true},
+                                    // ---> Replace 'Today' with todayDate <---
+                                    {'label': 'Payment Verified', 'date': todayDate, 'done': true},
                                     {'label': 'NGO Allocation', 'date': 'Pending', 'done': false},
                                     {'label': 'Final Disbursement', 'date': '', 'done': false},
                                   ],
@@ -5519,6 +6051,55 @@ class _ReliefMapState extends State<ReliefMap> {
   //
   //   return qrString; // Return the string so we can generate the image
   // }
+  // Future<String> _saveItemDonationToFirebase(Map<String, dynamic> locationData, String item, String imageUrl, String deliveryMethod) async {
+  //   final user = FirebaseAuth.instance.currentUser;
+  //   if (user == null) return "ERROR";
+  //
+  //   // 1. Generate unique QR Data
+  //   String uniqueId = "KC-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}";
+  //   String qrString = "$uniqueId-${item.substring(0,3).toUpperCase()}";
+  //
+  //   // 2. Setup Milestones based on method
+  //   String initialStatus = deliveryMethod == 'self' ? "Pending Drop-off" : "Awaiting Courier"; // Changed
+  //   List<Map<String, dynamic>> finalMilestones = deliveryMethod == 'self'
+  //       ? [
+  //     {'label': 'Pledge Confirmed', 'date': 'Today', 'done': true},
+  //     {'label': 'Drop-off Verified', 'date': '', 'done': false},
+  //     {'label': 'Distributed', 'date': '', 'done': false},
+  //   ]
+  //       : [
+  //     // --- ADDED THE 4TH MILESTONE HERE FOR COURIER ---
+  //     {'label': 'Courier Assigned', 'date': 'Today', 'done': true},
+  //     {'label': 'Picked Up & In Transit', 'date': '', 'done': false},
+  //     {'label': 'Arrived at NGO Hub', 'date': '', 'done': false},
+  //     {'label': 'Drop-off Verified', 'date': '', 'done': false},
+  //     {'label': 'Distributed', 'date': '', 'done': false}// <--- NEW MILESTONE
+  //   ];
+  //
+  //   // 3. Add to Firebase
+  //   await FirebaseFirestore.instance
+  //       .collection('users')
+  //       .doc(user.uid)
+  //       .collection('donations')
+  //       .add({
+  //     'id': uniqueId,
+  //     'target': locationData['location'] ?? "Unknown Zone",
+  //
+  //     // ---> ADD THIS LINE HERE <---
+  //     'category': (locationData['category'] is String) ? locationData['category'] : "Relief Aid",
+  //
+  //     'status': initialStatus,
+  //     'type': 'item',
+  //     'deliveryMethod': deliveryMethod,
+  //     'itemName': item,
+  //     'imageUrl': imageUrl,
+  //     'qrCodeData': qrString,
+  //     'milestones': finalMilestones,
+  //     'timestamp': FieldValue.serverTimestamp(),
+  //   });
+  //
+  //   return qrString;
+  // }
   Future<String> _saveItemDonationToFirebase(Map<String, dynamic> locationData, String item, String imageUrl, String deliveryMethod) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return "ERROR";
@@ -5527,40 +6108,29 @@ class _ReliefMapState extends State<ReliefMap> {
     String uniqueId = "KC-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}";
     String qrString = "$uniqueId-${item.substring(0,3).toUpperCase()}";
 
+    // ---> NEW: Get current date formatted as a string <---
+    String todayDate = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
+    // (Or use: String todayDate = DateFormat('dd MMM yyyy').format(DateTime.now()); if you use the intl package)
+
     // 2. Setup Milestones based on method
-    String initialStatus = deliveryMethod == 'self' ? "Pending Drop-off" : "Awaiting Courier"; // Changed
+    String initialStatus = deliveryMethod == 'self' ? "Pending Drop-off" : "Awaiting Courier";
+
     List<Map<String, dynamic>> finalMilestones = deliveryMethod == 'self'
         ? [
-      {'label': 'Pledge Confirmed', 'date': 'Today', 'done': true},
+      // ---> Changed 'Today' to todayDate <---
+      {'label': 'Pledge Confirmed', 'date': todayDate, 'done': true},
       {'label': 'Drop-off Verified', 'date': '', 'done': false},
       {'label': 'Distributed', 'date': '', 'done': false},
     ]
         : [
-      // --- ADDED THE 4TH MILESTONE HERE FOR COURIER ---
-      {'label': 'Courier Assigned', 'date': 'Today', 'done': true},
+      // ---> Changed 'Today' to todayDate <---
+      {'label': 'Courier Assigned', 'date': todayDate, 'done': true},
       {'label': 'Picked Up & In Transit', 'date': '', 'done': false},
       {'label': 'Arrived at NGO Hub', 'date': '', 'done': false},
       {'label': 'Drop-off Verified', 'date': '', 'done': false},
-      {'label': 'Distributed', 'date': '', 'done': false}// <--- NEW MILESTONE
+      {'label': 'Distributed', 'date': '', 'done': false}
     ];
 
-    // 3. Add to Firebase
-    // await FirebaseFirestore.instance
-    //     .collection('users')
-    //     .doc(user.uid)
-    //     .collection('donations')
-    //     .add({
-    //   'id': uniqueId,
-    //   'target': locationData['location'] ?? "Unknown Zone",
-    //   'status': initialStatus, // Dynamic Status
-    //   'type': 'item',
-    //   'deliveryMethod': deliveryMethod, // Save method type to DB
-    //   'itemName': item,
-    //   'imageUrl': imageUrl,
-    //   'qrCodeData': qrString,
-    //   'milestones': finalMilestones, // Dynamic Milestones
-    //   'timestamp': FieldValue.serverTimestamp(),
-    // });
     // 3. Add to Firebase
     await FirebaseFirestore.instance
         .collection('users')
@@ -5569,17 +6139,14 @@ class _ReliefMapState extends State<ReliefMap> {
         .add({
       'id': uniqueId,
       'target': locationData['location'] ?? "Unknown Zone",
-
-      // ---> ADD THIS LINE HERE <---
       'category': (locationData['category'] is String) ? locationData['category'] : "Relief Aid",
-
       'status': initialStatus,
       'type': 'item',
       'deliveryMethod': deliveryMethod,
       'itemName': item,
       'imageUrl': imageUrl,
       'qrCodeData': qrString,
-      'milestones': finalMilestones,
+      'milestones': finalMilestones, // Uses the updated list
       'timestamp': FieldValue.serverTimestamp(),
     });
 
@@ -6025,7 +6592,7 @@ class _ReliefMapState extends State<ReliefMap> {
 }
 
 class NotificationBell extends StatefulWidget {
-  const NotificationBell({super.key}); // Use super parameters
+  const NotificationBell({super.key});
 
   @override
   State<NotificationBell> createState() => _NotificationBellState();
@@ -6033,6 +6600,15 @@ class NotificationBell extends StatefulWidget {
 
 class _NotificationBellState extends State<NotificationBell> {
   int _seenCount = 0;
+
+  // Helper to safely parse dates whether they are Firestore Timestamps, Strings, or missing
+  DateTime _parseDateTime(dynamic ts) {
+    if (ts == null) return DateTime.now();
+    if (ts is Timestamp) return ts.toDate();
+    if (ts is String) return DateTime.tryParse(ts) ?? DateTime.now();
+    if (ts is int) return DateTime.fromMillisecondsSinceEpoch(ts);
+    return DateTime.now();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -6047,21 +6623,28 @@ class _NotificationBellState extends State<NotificationBell> {
           .orderBy('timestamp', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
-        // Use a List of typed Maps to avoid 'dynamic' errors
         List<Map<String, dynamic>> notifications = [];
 
         if (snapshot.hasData) {
           for (var doc in snapshot.data!.docs) {
             final data = doc.data() as Map<String, dynamic>;
-            // Casting milestones safely as a List of dynamic objects
             final List<dynamic> milestones = data['milestones'] ?? [];
             final String itemName = data['itemName'] ?? (data['type'] == 'money' ? "Donation" : "Item");
             final String target = data['target'] ?? "Unknown Hub";
             final String method = data['deliveryMethod'] ?? "self";
 
+            // Safely parse the document's main timestamp
+            final DateTime docDateTime = _parseDateTime(data['timestamp']);
+
             for (int i = 1; i < milestones.length; i++) {
-              final m = milestones[i] as Map<String, dynamic>; // Cast individual milestone
+              final m = milestones[i] as Map<String, dynamic>;
+
               if (m['done'] == true) {
+                // If the milestone has a timestamp, use it. Otherwise, fallback to the document's timestamp
+                final DateTime milestoneDateTime = m['timestamp'] != null
+                    ? _parseDateTime(m['timestamp'])
+                    : docDateTime;
+
                 notifications.add({
                   'title': m['label'] ?? 'Update',
                   'body': method == 'driver'
@@ -6069,11 +6652,34 @@ class _NotificationBellState extends State<NotificationBell> {
                       : 'Update: Your drop-off for $target is verified.',
                   'icon': method == 'driver' ? LucideIcons.truck : LucideIcons.box,
                   'color': i == milestones.length - 1 ? Colors.green : Colors.blue,
+                  // IMPORTANT: Ensure this is included so it's not null!
+                  'timestamp': milestoneDateTime,
+                  'milestoneIndex': i,
                 });
               }
             }
           }
         }
+
+        // Bulletproof sorting - safely fallback if anything is null
+        // Bulletproof sorting with a Tie-Breaker
+        notifications.sort((a, b) {
+          final DateTime timeA = a['timestamp'] as DateTime? ?? DateTime.now();
+          final DateTime timeB = b['timestamp'] as DateTime? ?? DateTime.now();
+
+          // 1. Sort by time (Newest first)
+          int timeComparison = timeB.compareTo(timeA);
+
+          if (timeComparison != 0) {
+            return timeComparison;
+          } else {
+            // 2. TIE-BREAKER: If timestamps are exactly the same,
+            // sort by milestone index (Higher index = later step = put on top!)
+            final int indexA = a['milestoneIndex'] as int? ?? 0;
+            final int indexB = b['milestoneIndex'] as int? ?? 0;
+            return indexB.compareTo(indexA);
+          }
+        });
 
         int currentCount = notifications.length;
         bool hasUnread = currentCount > _seenCount;
@@ -6096,14 +6702,13 @@ class _NotificationBellState extends State<NotificationBell> {
                 child: const Icon(LucideIcons.bell, color: Colors.black87, size: 22),
               ),
             ),
-
             if (hasUnread)
               Positioned(
                 top: -2,
                 right: -2,
                 child: Container(
                   padding: const EdgeInsets.all(4),
-                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18), // Ensure it stays circular
+                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
                   decoration: const BoxDecoration(
                     color: Colors.redAccent,
                     shape: BoxShape.circle,
@@ -6131,7 +6736,6 @@ class _NotificationBellState extends State<NotificationBell> {
     );
   }
 
-  // Refactored helper to keep the code clean
   Widget _buildSheetContent(BuildContext context, List<Map<String, dynamic>> notifications) {
     return Container(
       height: MediaQuery.of(context).size.height * 0.6,
@@ -6141,7 +6745,6 @@ class _NotificationBellState extends State<NotificationBell> {
       ),
       child: Column(
         children: [
-          // Header
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
@@ -6160,8 +6763,6 @@ class _NotificationBellState extends State<NotificationBell> {
               ],
             ),
           ),
-
-          // List
           Expanded(
             child: notifications.isEmpty
                 ? _buildEmptyState()
@@ -6169,9 +6770,7 @@ class _NotificationBellState extends State<NotificationBell> {
               padding: const EdgeInsets.all(20),
               itemCount: notifications.length,
               itemBuilder: (context, index) {
-                // Reverse index so newest notifications appear first
-                final notif = notifications[notifications.length - 1 - index];
-                return _buildNotificationItem(notif);
+                return _buildNotificationItem(notifications[index]);
               },
             ),
           ),
@@ -6194,6 +6793,10 @@ class _NotificationBellState extends State<NotificationBell> {
   }
 
   Widget _buildNotificationItem(Map<String, dynamic> notif) {
+    // Bulletproof: If timestamp is somehow null here, fallback to DateTime.now()
+    final DateTime dt = notif['timestamp'] as DateTime? ?? DateTime.now();
+    final String timeAgo = _getTimeAgo(dt);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -6222,13 +6825,39 @@ class _NotificationBellState extends State<NotificationBell> {
                 const SizedBox(height: 4),
                 Text(notif['body'], style: TextStyle(color: Colors.grey.shade600, fontSize: 12, height: 1.4)),
                 const SizedBox(height: 8),
-                Text("Just now", style: TextStyle(color: Colors.grey.shade400, fontSize: 10, fontWeight: FontWeight.bold)),
+                Text(timeAgo, style: TextStyle(color: Colors.grey.shade400, fontSize: 10, fontWeight: FontWeight.bold)),
               ],
             ),
           )
         ],
       ),
     );
+  }
+
+  String _getTimeAgo(DateTime dateTime) {
+    final Duration diff = DateTime.now().difference(dateTime);
+
+    if (diff.inDays > 8) {
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+    } else if ((diff.inDays / 7).floor() >= 1) {
+      return '1w ago';
+    } else if (diff.inDays >= 2) {
+      return '${diff.inDays}d ago';
+    } else if (diff.inDays >= 1) {
+      return '1d ago';
+    } else if (diff.inHours >= 2) {
+      return '${diff.inHours}h ago';
+    } else if (diff.inHours >= 1) {
+      return '1h ago';
+    } else if (diff.inMinutes >= 2) {
+      return '${diff.inMinutes}m ago';
+    } else if (diff.inMinutes >= 1) {
+      return '1m ago';
+    } else if (diff.inSeconds >= 3) {
+      return '${diff.inSeconds}s ago';
+    } else {
+      return 'Just now';
+    }
   }
 }
 
@@ -6552,6 +7181,7 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
     try {
       final apiKey = dotenv.env['GEMINI_ADVISOR_KEY'];
       if (apiKey == null) throw "API Key not found";
+      print("Debug: $apiKey");
 
       final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey);
 
@@ -6571,12 +7201,19 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
       });
       _scrollToBottom();
     } catch (e) {
+      // 1. THIS WILL PRINT THE EXACT REASON IN YOUR TERMINAL
+      debugPrint("GEMINI ADVISOR ERROR: $e");
+
       setState(() {
-        _messages.add({"role": "ai", "text": "Sorry, I am having trouble connecting to the server. Please try again."});
+        // 2. TEMPORARILY SHOW THE REAL ERROR IN THE CHAT UI FOR EASY DEBUGGING
+        _messages.add({
+          "role": "ai",
+          "text": "Error details: $e"
+        });
         _isLoading = false;
       });
     }
-  }
+    }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
