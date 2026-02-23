@@ -28,6 +28,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart'; // Use open_filex
 import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
+import 'package:xml/xml.dart';
 
 // ==========================================
 // 1. CONFIG & THEME
@@ -3563,90 +3564,2215 @@ class _NGOSecureConsoleState extends State<NGOSecureConsole> {
   }
 }
 
-// ==========================================
-// ORIGINAL SCREEN: Operational Dashboard
-// This shows ONLY after successful PIN entry
-// ==========================================
-class NGOOperationalDashboard extends StatelessWidget {
+
+// Assuming you have these defined elsewhere in your project:
+// import 'qr_scanner_screen.dart';
+// const Color kBlue = Color(0xFF2563EB);
+// const Color kSlate800 = Color(0xFF1E293B);
+// const Color kSlate600 = Color(0xFF475569);
+// const Color kSlate500 = Color(0xFF64748B);
+// const Color kSlate50 = Color(0xFFF8FAFC);
+
+class NGOOperationalDashboard extends StatefulWidget {
   const NGOOperationalDashboard({super.key});
 
   @override
+  State<NGOOperationalDashboard> createState() => _NGOOperationalDashboardState();
+}
+
+class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
+  final User? user = FirebaseAuth.instance.currentUser;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  int _selectedTab = 0; // 0: Operational Areas, 1: Physical Goods Requests
+
+  // State variables for backend logic
+  bool _isAnalyzing = false;
+  String _aiStrategy = "Fetching internal logistics advisor...";
+
+  @override
+  void initState() {
+    super.initState();
+    _generateMissionStrategy();
+  }
+
+  // ==========================================
+  // BACKEND: AI OPS STRATEGY (Operational Prompt)
+  // ==========================================
+  Future<void> _generateMissionStrategy() async {
+    setState(() => _isAnalyzing = true);
+    try {
+      final resNews = await http.get(Uri.parse('https://www.bharian.com.my/berita/nasional.xml'));
+      String news = "General Malaysia news";
+      if (resNews.statusCode == 200) {
+        news = XmlDocument.parse(resNews.body).findAllElements('title').take(5).map((e) => e.innerText).join(". ");
+      }
+
+      final apiKey = dotenv.env['GEMINI_KEY'];
+      final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey!);
+
+      final prompt = """
+      CONTEXT: $news
+      TASK: You are an internal NGO Logistics Consultant. 
+      Suggest how to verify drop-offs and manage disbursement logs in Malaysia based on these news trends.
+      Limit to 2 sentences. Professional tone.
+      """;
+
+      final response = await model.generateContent([Content.text(prompt)]);
+      setState(() {
+        _aiStrategy = response.text ?? "Focus on verified high-urgency zones.";
+      });
+    } catch (e) {
+      _aiStrategy = "Maintain standby readiness for internal logistics.";
+    } finally {
+      if (mounted) setState(() => _isAnalyzing = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+    return StreamBuilder<DocumentSnapshot>(
+        stream: _db.collection('users').doc(user?.uid).snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: kBlue));
+
+          var ngoData = snapshot.data!.data() as Map<String, dynamic>? ?? {};
+
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // NGO Header (Matches top of Image 1)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: kBlue, borderRadius: BorderRadius.circular(12)),
+                        child: const Icon(LucideIcons.building2, color: Colors.white, size: 24),
+                      ),
+                      const SizedBox(width: 16),
+
+                      // 1. Wrap the middle section in Expanded to prevent overflow
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // 2. Wrap the Name and Badge so they stack neatly if the screen is too narrow
+                            Wrap(
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 8,
+                              runSpacing: 4,
+                              children: [
+                                Text(
+                                    "MERCY Malaysia"?? "NGO Portal",
+                                    style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w900, color: kSlate800)
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(color: kBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(LucideIcons.checkCircle2, color: kBlue, size: 10),
+                                      SizedBox(width: 4),
+                                      Text("Official Partner", style: TextStyle(color: kBlue, fontSize: 9, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                )
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            const Text("PPM-001-10-XXXX • Relief Operational Hub", style: TextStyle(color: kSlate500, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(width: 12),
+
+                      // 3. Responsive Button: Shows only icon on small phones, full text on tablets/web
+                      ElevatedButton(
+                        onPressed: () => _showNewFieldReportDialog(),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kBlue,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: EdgeInsets.symmetric(
+                              horizontal: MediaQuery.of(context).size.width > 450 ? 16 : 12,
+                              vertical: 12
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(LucideIcons.fileText, size: 16),
+                            // Conditionally hide text if screen is narrow (mobile)
+                            if (MediaQuery.of(context).size.width > 450) ...[
+                              const SizedBox(width: 8),
+                              const Text("New Field Report", style: TextStyle(fontWeight: FontWeight.bold)),
+                            ]
+                          ],
+                        ),
+                      )
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+
+                  // 1. CUSTOM TAB BAR
+                  _buildCustomTabBar(),
+                  const SizedBox(height: 24),
+
+                  if (_selectedTab == 0) ...[
+                    // --- TAB 1: OPERATIONAL AREAS ---
+                    Wrap(
+                      spacing: 24,
+                      runSpacing: 24,
+                      children: [
+                        SizedBox(
+                          width: MediaQuery.of(context).size.width > 800 ? MediaQuery.of(context).size.width * 0.55 : double.infinity,
+                          child: _buildDisasterZonesCard(),
+                        ),
+                        SizedBox(
+                          width: MediaQuery.of(context).size.width > 800 ? MediaQuery.of(context).size.width * 0.35 : double.infinity,
+                          child: Column(
+                            children: [
+                              _buildFundsSummaryCard(context, ngoData),
+                              const SizedBox(height: 24),
+                              _buildVerifyReceiptCard(),
+                            ],
+                          ),
+                        )
+                      ],
+                    ),
+                  ] else ...[
+                    // --- TAB 2: PHYSICAL GOODS REQUESTS (Image 1 Layout) ---
+                    Wrap(
+                      spacing: 24,
+                      runSpacing: 24,
+                      children: [
+                        SizedBox(
+                          width: MediaQuery.of(context).size.width > 800 ? MediaQuery.of(context).size.width * 0.55 : double.infinity,
+                          child: _buildInventoryNeededCard(),
+                        ),
+                        SizedBox(
+                          width: MediaQuery.of(context).size.width > 800 ? MediaQuery.of(context).size.width * 0.35 : double.infinity,
+                          child: Column(
+                            children: [
+                              _buildFundsSummaryCard(context, ngoData),
+                              const SizedBox(height: 24),
+                              _buildVerifyReceiptCard(),
+                            ],
+                          ),
+                        )
+                      ],
+                    ),
+                  ]
+                ],
+              ),
+            ),
+          );
+        }
+    );
+  }
+
+  // --- DIALOG: REQUEST PHYSICAL GOODS (Matches Image 3) ---
+  // --- DIALOG: REQUEST PHYSICAL GOODS (Matches Image 2 + Location Dropdown) ---
+  // --- DIALOG: REQUEST PHYSICAL GOODS (Fixed Firebase Deep Update) ---
+  void _showRequestPhysicalGoodsDialog() {
+    final TextEditingController itemCtrl = TextEditingController();
+    final TextEditingController qtyCtrl = TextEditingController();
+
+    String? selectedLocation;
+    String selectedCategory = "Education"; // Default category
+    String selectedUrgency = "High";
+
+    String? errorMessage;
+    bool isSaving = false;
+
+    // Fetch active locations from relief_cache ONE TIME before the dialog builds
+    Future<List<String>> fetchActiveLocations() async {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('relief_cache').doc('current_status').get();
+        if (!doc.exists) return [];
+        final data = doc.data()!;
+        final results = data['results'] as List<dynamic>? ?? [];
+
+        // Extract unique location names
+        return results.map((e) => e['location'].toString()).toSet().toList();
+      } catch (e) {
+        return [];
+      }
+    }
+
+    final Future<List<String>> locationsFuture = fetchActiveLocations();
+
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          return StatefulBuilder(
+              builder: (context, setState) {
+                return Dialog(
+                  backgroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                  child: Container(
+                    width: 450, // Limits width on desktop
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Blue Header
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: const BoxDecoration(
+                            color: kBlue,
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("Request Physical Goods", style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                                  const Text("POST TO DONOR MAP", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
+                                ],
+                              ),
+                              IconButton(
+                                onPressed: () { if(!isSaving) Navigator.pop(context); },
+                                icon: const Icon(LucideIcons.x, color: Colors.white, size: 20),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              )
+                            ],
+                          ),
+                        ),
+
+                        // Form Body
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+
+                              // --- TARGET LOCATION DROPDOWN ---
+                              _buildFormLabel("TARGET LOCATION (ACTIVE ZONES)"),
+                              FutureBuilder<List<String>>(
+                                  future: locationsFuture,
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState == ConnectionState.waiting) {
+                                      return Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(border: Border.all(color: kSlate200), borderRadius: BorderRadius.circular(12)),
+                                        child: const Row(
+                                          children: [
+                                            SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                                            SizedBox(width: 12),
+                                            Text("Loading active zones...", style: TextStyle(color: kSlate500, fontSize: 14))
+                                          ],
+                                        ),
+                                      );
+                                    }
+
+                                    List<String> locations = snapshot.data ?? [];
+
+                                    if (locations.isEmpty) {
+                                      return Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
+                                        child: const Text("No active zones found. Please publish a Field Report first.", style: TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
+                                      );
+                                    }
+
+                                    if (selectedLocation == null || !locations.contains(selectedLocation)) {
+                                      selectedLocation = locations.first;
+                                    }
+
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      decoration: BoxDecoration(
+                                          border: Border.all(color: kSlate200),
+                                          borderRadius: BorderRadius.circular(12),
+                                          color: const Color(0xFFF8FAFC)
+                                      ),
+                                      child: DropdownButtonHideUnderline(
+                                        child: DropdownButton<String>(
+                                          value: selectedLocation,
+                                          isExpanded: true,
+                                          icon: const Icon(LucideIcons.chevronDown, size: 16),
+                                          items: locations.map((loc) => DropdownMenuItem(
+                                              value: loc,
+                                              child: Text(loc, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold))
+                                          )).toList(),
+                                          onChanged: (val) {
+                                            setState(() {
+                                              selectedLocation = val!;
+                                              errorMessage = null;
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    );
+                                  }
+                              ),
+                              const SizedBox(height: 16),
+
+                              _buildFormLabel("CATEGORY"),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                decoration: BoxDecoration(
+                                    border: Border.all(color: kSlate200),
+                                    borderRadius: BorderRadius.circular(12),
+                                    color: const Color(0xFFF8FAFC)
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: selectedCategory,
+                                    isExpanded: true,
+                                    icon: const Icon(LucideIcons.chevronDown, size: 16),
+                                    items: ["Education", "Food Security", "Medical Aid", "Clothing", "Disaster Relief"]
+                                        .map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 14)))).toList(),
+                                    onChanged: (val) {
+                                      setState(() {
+                                        selectedCategory = val!;
+                                        errorMessage = null;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              _buildFormLabel("SPECIFIC ITEM"),
+                              TextField(
+                                controller: itemCtrl,
+                                onChanged: (_) => setState(() => errorMessage = null),
+                                decoration: InputDecoration(
+                                  hintText: "e.g. Sejarah Books, Blankets...",
+                                  hintStyle: const TextStyle(color: kSlate400, fontSize: 14),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kSlate200)),
+                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kSlate200)),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        _buildFormLabel("URGENCY"),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                                          decoration: BoxDecoration(border: Border.all(color: kSlate200), borderRadius: BorderRadius.circular(12), color: const Color(0xFFF8FAFC)),
+                                          child: DropdownButtonHideUnderline(
+                                            child: DropdownButton<String>(
+                                              value: selectedUrgency,
+                                              isExpanded: true,
+                                              icon: const Icon(LucideIcons.chevronDown, size: 16),
+                                              items: ["Medium", "High", "Critical"]
+                                                  .map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 14)))).toList(),
+                                              onChanged: (val) => setState(() => selectedUrgency = val!),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 24),
+
+                              // --- INLINE ERROR MESSAGE ---
+                              if (errorMessage != null)
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  margin: const EdgeInsets.only(bottom: 16),
+                                  decoration: BoxDecoration(
+                                      color: Colors.red.shade50,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: Colors.red.shade200)
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(LucideIcons.alertCircle, color: Colors.red, size: 16),
+                                      const SizedBox(width: 8),
+                                      Expanded(child: Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold))),
+                                    ],
+                                  ),
+                                ),
+                              // ----------------------------
+
+                              // Submit Button
+                              SizedBox(
+                                width: double.infinity,
+                                height: 50,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: kBlue,
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      elevation: 0
+                                  ),
+                                  onPressed: isSaving ? null : () async {
+                                    // 1. Validation
+                                    if (selectedLocation == null) {
+                                      setState(() => errorMessage = "Please select a target location.");
+                                      return;
+                                    }
+                                    if (itemCtrl.text.trim().isEmpty || qtyCtrl.text.trim().isEmpty) {
+                                      setState(() => errorMessage = "Please fill in the item name.");
+                                      return;
+                                    }
+
+                                    setState(() {
+                                      isSaving = true;
+                                      errorMessage = null;
+                                    });
+
+                                    try {
+                                      // 1. Push to NGO's personal inventory list (For auditing)
+                                      await FirebaseFirestore.instance.collection('ngo_inventory_requests').add({
+                                        'ngoId': FirebaseAuth.instance.currentUser?.uid,
+                                        'location': selectedLocation,
+                                        'category': selectedCategory,
+                                        'item': itemCtrl.text.trim(),
+                                        'quantity': int.tryParse(qtyCtrl.text.trim()) ?? 1,
+                                        'urgency': selectedUrgency,
+                                        'timestamp': FieldValue.serverTimestamp(),
+                                      });
+
+                                      // ==========================================
+                                      // 2. THE FIX: PROPER DEEP COPY UPDATE TO FIRESTORE
+                                      // ==========================================
+                                      DocumentReference cacheRef = FirebaseFirestore.instance.collection('relief_cache').doc('current_status');
+                                      DocumentSnapshot cacheSnap = await cacheRef.get();
+
+                                      if (cacheSnap.exists) {
+                                        List<dynamic> results = List.from(cacheSnap['results'] ?? []);
+
+                                        // Find the zone matching the location
+                                        int zoneIndex = results.indexWhere((r) => r['location'] == selectedLocation);
+
+                                        if (zoneIndex != -1) {
+                                          // Map UI Category to JSON short keys used by AI
+                                          String catKey = 'rel';
+                                          if (selectedCategory == 'Food Security') catKey = 'food';
+                                          if (selectedCategory == 'Medical Aid') catKey = 'med';
+                                          if (selectedCategory == 'Education') catKey = 'edu';
+                                          if (selectedCategory == 'Clothing') catKey = 'cloth';
+
+                                          // --- DEEP COPY OF THE SPECIFIC ZONE ---
+                                          Map<String, dynamic> targetZone = Map<String, dynamic>.from(results[zoneIndex]);
+
+                                          // --- UPDATE NEEDED_ITEMS MAP ---
+                                          Map<String, dynamic> neededItems = Map<String, dynamic>.from(targetZone['needed_items'] ?? {});
+                                          List<dynamic> itemsList = List.from(neededItems[catKey] ?? []);
+
+                                          // Remove the generic placeholder if it exists!
+                                          itemsList.removeWhere((item) => item.toString() == "Blanket");
+
+                                          // Add the specific item (e.g. "sejarah books")
+                                          itemsList.add(itemCtrl.text.trim());
+                                          neededItems[catKey] = itemsList;
+                                          targetZone['needed_items'] = neededItems; // Put map back in zone
+
+                                          // --- UPDATE SEVERITIES MAP ---
+                                          Map<String, dynamic> severities = Map<String, dynamic>.from(targetZone['severities'] ?? {});
+                                          severities[catKey] = selectedUrgency;
+                                          targetZone['severities'] = severities; // Put map back in zone
+
+                                          // Replace the old zone map with our updated zone map
+                                          results[zoneIndex] = targetZone;
+
+                                          // Save the fully updated array back to cache
+                                          await cacheRef.update({'results': results});
+                                        }
+                                      }
+
+                                      // Close Dialog & Show Success
+                                      if (context.mounted) {
+                                        Navigator.pop(context);
+                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                            content: Text("Item successfully requested & published to the map!"),
+                                            backgroundColor: Colors.green
+                                        ));
+                                      }
+                                    } catch (e) {
+                                      setState(() {
+                                        isSaving = false;
+                                        errorMessage = "Error publishing request: $e";
+                                      });
+                                    }
+                                  },
+                                  child: isSaving
+                                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                      : const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text("Publish Item Request", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                      SizedBox(width: 8),
+                                      Icon(LucideIcons.arrowRight, size: 18)
+                                    ],
+                                  ),
+                                ),
+                              )
+                            ],
+                          ),
+                        )
+                      ],
+                    ),
+                  ),
+                );
+              }
+          );
+        }
+    );
+  }
+
+  Widget _buildFormLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Text(text, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 0.5)),
+    );
+  }
+
+// --- DIALOG: NEW FIELD REPORT (With Live Map Search & Category) ---
+  // --- DIALOG: NEW FIELD REPORT (With Inline Error Handling) ---
+  void _showNewFieldReportDialog() {
+    TextEditingController? autocompleteController;
+    final TextEditingController summaryCtrl = TextEditingController();
+    String selectedUrgency = "High";
+    String selectedCategory = "Flood Relief";
+    bool isPublishing = false;
+
+    Map<String, dynamic>? verifiedLocation;
+    String? errorMessage; // <-- NEW: State to hold the error message inside the dialog
+
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          return StatefulBuilder(
+              builder: (context, setState) {
+                return Dialog(
+                  backgroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                  child: Container(
+                    width: 450, // Constrain width for desktop
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Blue Header
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: const BoxDecoration(
+                            color: kBlue,
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("New Field Report", style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                                  const Text("OPERATIONAL INTELLIGENCE", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
+                                ],
+                              ),
+                              IconButton(
+                                onPressed: () { if(!isPublishing) Navigator.pop(context); },
+                                icon: const Icon(LucideIcons.x, color: Colors.white, size: 20),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              )
+                            ],
+                          ),
+                        ),
+
+                        // Form Body
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+
+                              _buildFormLabel("ZONE / AREA NAME"),
+                              // --- STRICT LIVE MAP SEARCH AUTOCOMPLETE ---
+                              Autocomplete<Map<String, dynamic>>(
+                                optionsBuilder: (TextEditingValue textEditingValue) async {
+                                  final List<Map<String, dynamic>> defaultLocations = [
+                                    {"name": "Kuala Krai", "display_name": "Kuala Krai, Kelantan, Malaysia", "lat": "5.5310", "lon": "102.1966"},
+                                    {"name": "Kota Bharu", "display_name": "Kota Bharu, Kelantan, Malaysia", "lat": "6.1254", "lon": "102.2381"},
+                                    {"name": "Shah Alam", "display_name": "Shah Alam, Selangor, Malaysia", "lat": "3.0738", "lon": "101.5183"},
+                                    {"name": "Klang", "display_name": "Klang, Selangor, Malaysia", "lat": "3.0449", "lon": "101.4456"},
+                                    {"name": "Baling", "display_name": "Baling, Kedah, Malaysia", "lat": "5.6766", "lon": "100.9167"},
+                                    {"name": "Johor Bahru", "display_name": "Johor Bahru, Johor, Malaysia", "lat": "1.4927", "lon": "103.7414"},
+                                    {"name": "Kuantan", "display_name": "Kuantan, Pahang, Malaysia", "lat": "3.8077", "lon": "103.3260"},
+                                    {"name": "Kuala Lumpur", "display_name": "Kuala Lumpur, Malaysia", "lat": "3.1390", "lon": "101.6869"},
+                                  ];
+
+                                  if (textEditingValue.text.length < 3) {
+                                    if (textEditingValue.text.isEmpty) return defaultLocations;
+                                    return defaultLocations.where((loc) =>
+                                        loc['name'].toString().toLowerCase().contains(textEditingValue.text.toLowerCase())
+                                    );
+                                  }
+
+                                  final url = Uri.parse('https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(textEditingValue.text)}&format=json&countrycodes=my&limit=5');
+                                  try {
+                                    final response = await http.get(url, headers: {'User-Agent': 'KitaCareApp'});
+                                    if (response.statusCode == 200) {
+                                      final List data = json.decode(response.body);
+                                      return data.cast<Map<String, dynamic>>();
+                                    }
+                                  } catch (e) {
+                                    debugPrint("Autocomplete API Error: $e");
+                                  }
+                                  return const Iterable<Map<String, dynamic>>.empty();
+                                },
+
+                                displayStringForOption: (option) => option['name'] ?? option['display_name'] ?? '',
+
+                                fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
+                                  autocompleteController = controller;
+                                  return TextField(
+                                    controller: controller,
+                                    focusNode: focusNode,
+                                    onEditingComplete: onEditingComplete,
+                                    onChanged: (val) {
+                                      // Clear location verification AND clear any active error message
+                                      if (verifiedLocation != null || errorMessage != null) {
+                                        setState(() {
+                                          verifiedLocation = null;
+                                          errorMessage = null;
+                                        });
+                                      }
+                                    },
+                                    decoration: InputDecoration(
+                                      hintText: "Click to see suggestions or type a city...",
+                                      hintStyle: const TextStyle(color: kSlate400, fontSize: 14),
+                                      prefixIcon: Icon(
+                                          verifiedLocation != null ? LucideIcons.checkCircle : LucideIcons.search,
+                                          size: 16,
+                                          color: verifiedLocation != null ? Colors.green : kSlate400
+                                      ),
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kSlate200)),
+                                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kSlate200)),
+                                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kBlue, width: 2)),
+                                    ),
+                                  );
+                                },
+
+                                optionsViewBuilder: (context, onSelected, options) {
+                                  return Align(
+                                    alignment: Alignment.topLeft,
+                                    child: Material(
+                                      elevation: 8,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(maxHeight: 250, maxWidth: 402),
+                                        child: ListView.builder(
+                                          padding: const EdgeInsets.symmetric(vertical: 8),
+                                          shrinkWrap: true,
+                                          itemCount: options.length,
+                                          itemBuilder: (context, index) {
+                                            final option = options.elementAt(index);
+                                            return ListTile(
+                                              leading: const Icon(LucideIcons.mapPin, color: kBlue, size: 18),
+                                              title: Text(option['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                              subtitle: Text(option['display_name'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: kSlate500)),
+                                              onTap: () {
+                                                onSelected(option);
+                                                // Marks safe and clears any errors
+                                                setState(() {
+                                                  verifiedLocation = option;
+                                                  errorMessage = null;
+                                                });
+                                              },
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 20),
+
+                              _buildFormLabel("RELIEF CATEGORY"),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFC),
+                                  border: Border.all(color: kSlate200),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: selectedCategory,
+                                    isExpanded: true,
+                                    icon: const Icon(LucideIcons.chevronDown, size: 16),
+                                    items: ["Flood Relief", "Food Security", "Medical Aid"]
+                                        .map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 14)))).toList(),
+                                    onChanged: (val) => setState(() => selectedCategory = val!),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+
+                              _buildFormLabel("URGENCY SCORE"),
+                              Container(
+                                decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12)),
+                                child: Row(
+                                  children: ["Medium", "High", "Critical"].map((u) {
+                                    bool isSelected = selectedUrgency == u;
+                                    return Expanded(
+                                      child: GestureDetector(
+                                        onTap: () => setState(() => selectedUrgency = u),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(vertical: 12),
+                                          decoration: BoxDecoration(
+                                            color: isSelected ? kBlue : Colors.transparent,
+                                            borderRadius: BorderRadius.circular(12),
+                                            boxShadow: isSelected ? [const BoxShadow(color: Colors.black12, blurRadius: 4)] : [],
+                                          ),
+                                          alignment: Alignment.center,
+                                          child: Text(u, style: TextStyle(
+                                              color: isSelected ? Colors.white : kSlate500,
+                                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                              fontSize: 13
+                                          )),
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+
+                              _buildFormLabel("FIELD SUMMARY"),
+                              TextField(
+                                controller: summaryCtrl,
+                                maxLines: 4,
+                                onChanged: (_) { if(errorMessage != null) setState(() => errorMessage = null); }, // Clear error when typing
+                                decoration: InputDecoration(
+                                  hintText: "Describe the current situation, rising water levels, number of families affected...",
+                                  hintStyle: const TextStyle(color: kSlate400, fontSize: 14),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kSlate200)),
+                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kSlate200)),
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+
+                              // --- NEW: INLINE ERROR MESSAGE UI ---
+                              if (errorMessage != null)
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  margin: const EdgeInsets.only(bottom: 16),
+                                  decoration: BoxDecoration(
+                                      color: Colors.red.shade50,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: Colors.red.shade200)
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(LucideIcons.alertCircle, color: Colors.red, size: 16),
+                                      const SizedBox(width: 8),
+                                      Expanded(child: Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold))),
+                                    ],
+                                  ),
+                                ),
+                              // ------------------------------------
+
+                              // Publish Button
+                              SizedBox(
+                                width: double.infinity,
+                                height: 50,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: kBlue,
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      elevation: 0
+                                  ),
+                                  onPressed: isPublishing ? null : () async {
+
+                                    // 1. Check text fields
+                                    if ((autocompleteController?.text.isEmpty ?? true) || summaryCtrl.text.trim().isEmpty) {
+                                      setState(() => errorMessage = "Please fill in all fields before publishing.");
+                                      return;
+                                    }
+
+                                    // 2. Check if valid location from dropdown
+                                    if (verifiedLocation == null) {
+                                      setState(() => errorMessage = "Invalid Location! Please select an exact area from the dropdown map search.");
+                                      return;
+                                    }
+
+                                    setState(() {
+                                      errorMessage = null; // Clear errors
+                                      isPublishing = true;
+                                    });
+
+                                    try {
+                                      double exactLat = double.parse(verifiedLocation!['lat'].toString());
+                                      double exactLng = double.parse(verifiedLocation!['lon'].toString());
+                                      String realLocationName = verifiedLocation!['name'] ?? "Unknown Area";
+
+                                      String catKey = 'rel';
+                                      if (selectedCategory == 'Food Security') catKey = 'food';
+                                      if (selectedCategory == 'Medical Aid') catKey = 'med';
+
+                                      int score = selectedUrgency == 'Critical' ? 95 : (selectedUrgency == 'High' ? 80 : 60);
+
+                                      // Format Data for Firebase
+                                      // Update this block inside _showNewFieldReportDialog
+                                      Map<String, dynamic> newZone = {
+                                        "location": realLocationName,
+                                        "category": selectedCategory,
+                                        "description": "NGO REPORT: ${summaryCtrl.text.trim()}",
+                                        "score": score,
+                                        "lat": exactLat,
+                                        "lng": exactLng,
+                                        "severities": {catKey: selectedUrgency},
+                                        "needed_items": {catKey: ["Blanket"]},
+                                        "isManual": true, // <--- 1. ADD THIS FLAG
+                                      };
+
+                                      // Update Firebase
+                                      await _db.collection('relief_cache').doc('current_status').update({
+                                        'results': FieldValue.arrayUnion([newZone])
+                                      });
+
+                                      if(context.mounted) {
+                                        // Pop the dialog FIRST
+                                        Navigator.pop(context);
+                                        // Show Success Snackbar on the MAIN SCREEN (so it doesn't get hidden)
+                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                            content: Text("Field report published! Location pinned accurately on the map."),
+                                            backgroundColor: Colors.green
+                                        ));
+                                      }
+
+                                    } catch (e) {
+                                      setState(() {
+                                        isPublishing = false;
+                                        errorMessage = "Error publishing report: $e";
+                                      });
+                                    }
+                                  },
+                                  child: isPublishing
+                                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                      : const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text("Publish Official Report", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                      SizedBox(width: 8),
+                                      Icon(LucideIcons.arrowRight, size: 18)
+                                    ],
+                                  ),
+                                ),
+                              )
+                            ],
+                          ),
+                        )
+                      ],
+                    ),
+                  ),
+                );
+              }
+          );
+        }
+    );
+  }
+
+  Widget _buildCustomTabBar() {
+    return Container(
+      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0), width: 1.5))),
+      child: Row(
+        children: [
+          _tabItem("Operational Areas", 0),
+          const SizedBox(width: 32),
+          _tabItem("Physical Goods Requests", 1),
+        ],
+      ),
+    );
+  }
+
+  // --- INVENTORY NEEDED CARD (Dynamic from relief_cache) ---
+  Widget _buildInventoryNeededCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 40),
-          Text("Official Relief Hub", style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w800, color: kSlate800)),
-          const Text("MERCY Malaysia • Operational Status: ACTIVE", style: TextStyle(color: kBlue, fontWeight: FontWeight.bold)),
-
-          const SizedBox(height: 32),
-
-          Row(
-            children: [
-              _ngoStat("ACTIVE ZONES", "04", kBlue),
-              const SizedBox(width: 12),
-              _ngoStat("DISBURSED", "RM 12.5k", kEmerald),
-            ],
+          // Header with Button
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Inventory Needed", style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: kSlate800)),
+                TextButton.icon(
+                  onPressed: () => _showRequestPhysicalGoodsDialog(),
+                  icon: const Icon(LucideIcons.plus, size: 14),
+                  label: const Text("Request New Item", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: kBlue,
+                    backgroundColor: kBlue.withOpacity(0.05),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                )
+              ],
+            ),
           ),
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
 
-          const SizedBox(height: 32),
-          const SectionTitle(title: "Managed Disaster Zones", icon: Icons.map, color: kBlue),
-          const SizedBox(height: 16),
+          // --- DYNAMIC AI SUMMARIZATION FROM RELIEF CACHE ---
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance.collection('relief_cache').doc('current_status').snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator(color: kBlue)));
+              }
+              if (!snapshot.hasData || !snapshot.data!.exists) {
+                return const Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Center(child: Text("No items requested yet. Click 'Request New Item' to begin.", style: TextStyle(color: kSlate400))),
+                );
+              }
 
-          _managedZoneCard("Rantau Panjang, Kelantan", "Monitoring", 92),
-          _managedZoneCard("Baling, Kedah", "Relief Dispatched", 78),
+              // 1. Extract Data
+              var data = snapshot.data!.data() as Map<String, dynamic>;
+              List<dynamic> results = data['results'] ?? [];
 
-          const SizedBox(height: 32),
-          _ngoActionButton("Publish New Field Report", Icons.description, kBlue),
-          const SizedBox(height: 12),
-          _ngoActionButton("Verify Donor Receipt (Scan QR)", Icons.qr_code, kSlate800),
+              // 2. Map to hold deduplicated items and their highest urgency
+              Map<String, String> aggregatedItems = {};
+
+              // Helper to rank urgency for sorting (Critical = Highest)
+              int severityWeight(String s) {
+                if (s.toLowerCase() == 'critical') return 3;
+                if (s.toLowerCase() == 'high') return 2;
+                if (s.toLowerCase() == 'medium') return 1;
+                return 0;
+              }
+
+              // 3. Loop through every active disaster zone
+              for (var zone in results) {
+                Map<String, dynamic> neededItems = zone['needed_items'] ?? {};
+                Map<String, dynamic> severities = zone['severities'] ?? {};
+
+                // Loop through categories (cloth, edu, food, med, rel)
+                neededItems.forEach((catKey, itemsArray) {
+                  String severity = severities[catKey]?.toString() ?? 'Medium';
+
+                  for (var itemRaw in (itemsArray as List<dynamic>)) {
+                    String itemName = itemRaw.toString();
+                    if (itemName == "Blanket") continue;
+
+                    if (aggregatedItems.containsKey(itemName)) {
+                      if (severityWeight(severity) > severityWeight(aggregatedItems[itemName]!)) {
+                        aggregatedItems[itemName] = severity;
+                      }
+                    } else {
+                      aggregatedItems[itemName] = severity;
+                    }
+                  }
+                });
+              }
+
+              // 4. Sort the list so Critical/High items show up FIRST
+              var sortedItems = aggregatedItems.entries.toList()
+                ..sort((a, b) => severityWeight(b.value).compareTo(severityWeight(a.value)));
+
+              if (sortedItems.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Center(child: Text("All zones currently stable. No physical inventory needed.", style: TextStyle(color: kSlate400))),
+                );
+              }
+
+              // --- UPDATED LAYOUT: SCROLLABLE GRID ---
+              // IN YOUR _buildInventoryNeededCard WIDGET:
+
+              return ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(24),
+                  shrinkWrap: true,
+                  itemCount: sortedItems.length,
+
+                  // 👇 REPLACE THE GRID DELEGATE WITH THIS 👇
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 320, // The minimum width each pill needs to not crash
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    mainAxisExtent: 85,
+                  ),
+                  // 👆 ----------------------------------- 👆
+
+                  itemBuilder: (context, index) {
+                    return _buildInventoryItemPill(
+                      sortedItems[index].key,
+                      sortedItems[index].value,
+                    );
+                  },
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
   }
 
-  // (Your original helper methods here...)
-  Widget _ngoStat(String label, String val, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: kSlate100)),
-        child: Column(children: [
-          Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: kSlate400)),
-          Text(val, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: color)),
-        ]),
-      ),
-    );
-  }
+  // --- INVENTORY PILL UI ---
+  Widget _buildInventoryItemPill(String itemName, String urgency) {
+    bool isCritical = urgency.toLowerCase() == 'critical';
+    bool isHigh = urgency.toLowerCase() == 'high';
 
-  Widget _managedZoneCard(String name, String status, int urgency) {
+    Color urgencyTextColor;
+    Color urgencyBgColor;
+
+    if (isCritical) {
+      urgencyTextColor = const Color(0xFFEF4444); // Strong Red
+      urgencyBgColor = const Color(0xFFFEF2F2);   // Light Red BG
+    } else if (isHigh) {
+      urgencyTextColor = Colors.orange.shade800;  // Strong Orange
+      urgencyBgColor = Colors.orange.shade50;     // Light Orange BG
+    } else {
+      urgencyTextColor = kBlue;                   // Blue
+      urgencyBgColor = kBlue.withOpacity(0.1);    // Light Blue BG
+    }
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: kSlate100)),
+      // Removed hardcoded `width` here so it properly expands to fit the GridView column
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), // Adjusted slightly to fit mainAxisExtent nicely
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF1F5F9), width: 2),
+      ),
       child: Row(
         children: [
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            Text(status, style: const TextStyle(color: kBlue, fontSize: 12, fontWeight: FontWeight.bold)),
-          ])),
-          CircularProgressIndicator(value: urgency / 100, color: Colors.redAccent, backgroundColor: kSlate100, strokeWidth: 8),
+          const Icon(LucideIcons.package, size: 20, color: kBlue),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              itemName,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: kSlate800), // Minor font size tweak for fitting
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+                color: urgencyBgColor,
+                borderRadius: BorderRadius.circular(12)
+            ),
+            child: Text(
+                urgency.toUpperCase(),
+                style: TextStyle(color: urgencyTextColor, fontSize: 10, fontWeight: FontWeight.w900)
+            ),
+          )
         ],
       ),
     );
   }
 
-  Widget _ngoActionButton(String label, IconData icon, Color color) {
-    return SizedBox(
+  Widget _tabItem(String title, int index) {
+    bool isSelected = _selectedTab == index;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedTab = index),
+      child: Container(
+        padding: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+            border: Border(
+                bottom: BorderSide(
+                  color: isSelected ? const Color(0xFF2563EB) : Colors.transparent,
+                  width: 3,
+                )
+            )
+        ),
+        child: Text(
+          title,
+          style: TextStyle(
+            color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            fontSize: 15,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 1. MANAGED DISASTER ZONES (Table Layout connected to Firebase)
+  // 1. MANAGED DISASTER ZONES (Table Layout connected to Firebase)
+  Widget _buildDisasterZonesCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text("Managed Disaster Zones", style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B))),
+          ),
+
+          // Table Columns
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Row(
+              children: [
+                Expanded(flex: 3, child: Text("LOCATION", style: _tableHeaderStyle())),
+                Expanded(flex: 2, child: Text("STATUS", style: _tableHeaderStyle())),
+                Expanded(flex: 2, child: Text("URGENCY", style: _tableHeaderStyle())),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
+
+          // --- NEW: Firebase Data Stream pointing to AI relief_cache ---
+          StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance.collection('relief_cache').doc('current_status').snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator()));
+                }
+                if (!snapshot.hasData || !snapshot.data!.exists) {
+                  return const Padding(padding: EdgeInsets.all(32), child: Center(child: Text("No active zones. / Tiada zon aktif.")));
+                }
+
+                var data = snapshot.data!.data() as Map<String, dynamic>;
+                List<dynamic> results = data['results'] ?? [];
+
+                if (results.isEmpty) {
+                  return const Padding(padding: EdgeInsets.all(32), child: Center(child: Text("No active zones. / Tiada zon aktif.")));
+                }
+
+                return Column(
+                  // Pass the entire zone map to the row builder to extract score/severities
+                  children: results.map((zone) {
+                    return _buildZoneRow(zone as Map<String, dynamic>);
+                  }).toList(),
+                );
+              }
+          ),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+
+  TextStyle _tableHeaderStyle() => const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Color(0xFF94A3B8), letterSpacing: 1.2);
+
+  Widget _buildZoneRow(Map<String, dynamic> zone) {
+    String location = zone['location'] ?? "Unknown Zone";
+
+    // Extract the AI score (e.g., 95, 88, 82) to use for Urgency
+    double score = (zone['score'] as num? ?? 50.0).toDouble();
+    double urgencyValue = score / 100.0; // Converts 95 to 0.95 for the progress bar
+
+    // Extract Severities to determine the Status
+    Map<String, dynamic> severities = zone['severities'] ?? {};
+    bool hasCritical = severities.containsValue("Critical");
+    bool hasHigh = severities.containsValue("High");
+
+    // --- DYNAMIC STATUS LOGIC ---
+    String statusText;
+    Color statusColor;
+    Color statusBg;
+
+    if (hasCritical) {
+      statusText = "Active Response";
+      statusColor = Colors.redAccent.shade700;
+      statusBg = Colors.red.shade50;
+    } else if (hasHigh) {
+      statusText = "Dispatching";
+      statusColor = Colors.orange.shade700;
+      statusBg = Colors.orange.shade50;
+    } else {
+      statusText = "Monitoring";
+      statusColor = const Color(0xFF2563EB); // Blue
+      statusBg = const Color(0xFFEFF6FF);
+    }
+
+    // --- DYNAMIC URGENCY LOGIC (Based on Score) ---
+    String urgencyLabel;
+    Color urgencyColor;
+
+    if (score >= 90) {
+      urgencyLabel = "Critical ($score)";
+      urgencyColor = Colors.redAccent;
+    } else if (score >= 80) {
+      urgencyLabel = "High ($score)";
+      urgencyColor = Colors.orange;
+    } else {
+      urgencyLabel = "Medium ($score)";
+      urgencyColor = const Color(0xFF2563EB);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Row(
+        children: [
+          // LOCATION
+          Expanded(
+              flex: 3,
+              child: Text(
+                location,
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF1E293B)),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              )
+          ),
+
+          // STATUS (Dynamic Badge)
+          Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(6)),
+                  child: Text(statusText, style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w800)),
+                ),
+              )
+          ),
+
+          // URGENCY (Dynamic Progress Bar & Text)
+          Expanded(
+              flex: 2,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                        urgencyLabel,
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: urgencyColor)
+                    ),
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: urgencyValue,
+                        minHeight: 6,
+                        backgroundColor: const Color(0xFFF1F5F9), // Light grey background
+                        valueColor: AlwaysStoppedAnimation<Color>(urgencyColor), // Dynamic color
+                      ),
+                    ),
+                  ],
+                ),
+              )
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 2. FUNDS SUMMARY CARD (REAL-TIME WALLET)
+  Widget _buildFundsSummaryCard(BuildContext context, Map<String, dynamic> data) {
+    return Container(
       width: double.infinity,
-      height: 60,
-      child: ElevatedButton.icon(
-        onPressed: () {},
-        icon: Icon(icon),
-        label: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-        style: ElevatedButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(LucideIcons.wallet, color: Color(0xFF2563EB), size: 20),
+              const SizedBox(width: 10),
+              Text("Funds Summary", style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B))),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Inner Light Blue Box with Real-Time Firebase Stream
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collectionGroup('donations').snapshots(),
+                builder: (context, snapshot) {
+                  double totalFunds = 0.0;
+
+                  if (snapshot.hasData) {
+                    for (var doc in snapshot.data!.docs) {
+                      var docData = doc.data() as Map<String, dynamic>;
+                      if (docData['type'] == 'money') {
+                        totalFunds += (docData['amount'] as num? ?? 0.0).toDouble();
+                      }
+                    }
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                          "NGO DIGITAL WALLET",
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Color(0xFF2563EB), letterSpacing: 0.5)
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                          "RM ${totalFunds.toStringAsFixed(2)}",
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w900, fontSize: 28, color: const Color(0xFF1E293B))
+                      ),
+                      const SizedBox(height: 4),
+                      const Text("Total Disbursable Relief Funds", style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+                    ],
+                  );
+                }
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // FIXED: This is the correct Outlined Button to View Detailed Statements
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const DetailedStatementScreen(),
+                  ),
+                );
+              },
+              style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  side: const BorderSide(color: Color(0xFFE2E8F0)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+              ),
+              child: const Text("View Detailed Statements", style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF475569))),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Future<void> _verifyReceiptId(String receiptId) async {
+    // 1. Show a loading spinner
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB))),
+    );
+
+    try {
+      // 2. FIX: Use collectionGroup because donations are inside 'users/{uid}/donations/'
+      var querySnapshot = await FirebaseFirestore.instance
+          .collectionGroup('donations')
+          .where('id', isEqualTo: receiptId)
+          .limit(1)
+          .get();
+
+      // 3. SMART FALLBACK: If they didn't find the ID, check if they typed the QR Code string instead
+      if (querySnapshot.docs.isEmpty) {
+        querySnapshot = await FirebaseFirestore.instance
+            .collectionGroup('donations')
+            .where('qrCodeData', isEqualTo: receiptId)
+            .limit(1)
+            .get();
+      }
+
+      // If STILL empty, it truly doesn't exist
+      if (querySnapshot.docs.isEmpty) {
+        Navigator.pop(context); // Close loading spinner
+        _showErrorSnackBar("Receipt ID not found in the system. Make sure you typed it exactly as shown.");
+        return;
+      }
+
+      // Extract the document reference and data
+      final docReference = querySnapshot.docs.first;
+      final data = docReference.data();
+
+      // ==========================================
+      // RULE 1: MUST NOT BE MONEY
+      // ==========================================
+      if (data['type'] == 'money') {
+        Navigator.pop(context);
+        _showErrorSnackBar("Cannot verify money donations. Only physical items.");
+        return;
+      }
+
+      // ==========================================
+      // RULE 2: CHECK MILESTONES BASED ON DELIVERY METHOD
+      // ==========================================
+      bool hasArrivedAtHubMilestone = false;
+      bool isArrivedAtHubDone = false;
+
+      // NEW: Track "Picked Up" status for Couriers
+      bool isPickedUpDone = false;
+
+      bool isPledgeConfirmedDone = false;
+      bool isAlreadyDistributed = false;
+
+      // Make a modifiable copy of the milestones
+      List<dynamic> milestones = List.from(data['milestones'] ?? []);
+
+      // Scan through the milestones
+      for (var milestone in milestones) {
+        if (milestone['label'] == 'Picked Up & In Transit') {
+          if (milestone['done'] == true) isPickedUpDone = true;
+        }
+        if (milestone['label'] == 'Arrived at NGO Hub') {
+          hasArrivedAtHubMilestone = true;
+          if (milestone['done'] == true) isArrivedAtHubDone = true;
+        }
+        if (milestone['label'] == 'Pledge Confirmed') {
+          if (milestone['done'] == true) isPledgeConfirmedDone = true;
+        }
+        // Check if it's already verified to prevent duplicate scanning
+        if (milestone['label'] == 'Distributed' && milestone['done'] == true) {
+          isAlreadyDistributed = true;
+        }
+      }
+
+      if (isAlreadyDistributed) {
+        Navigator.pop(context);
+        _showErrorSnackBar("Action Denied: This donation has already been verified and distributed.");
+        return;
+      }
+
+      bool isReadyForVerification = false;
+      String errorMessage = "";
+
+      // Logic: Courier vs Self Drop-off
+      if (hasArrivedAtHubMilestone) {
+        // --- NEW COURIER LOGIC: Both must be true ---
+        if (isPickedUpDone && isArrivedAtHubDone) {
+          isReadyForVerification = true;
+        } else {
+          // Dynamic error messages depending on where the courier is
+          if (!isPickedUpDone) {
+            errorMessage = "Verification failed: The courier has not picked up this item yet.";
+          } else if (!isArrivedAtHubDone) {
+            errorMessage = "Verification failed: The courier has not dropped off this item at the NGO Hub yet.";
+          }
+        }
+      } else {
+        // --- SELF DROP-OFF LOGIC ---
+        if (isPledgeConfirmedDone) {
+          isReadyForVerification = true;
+        } else {
+          errorMessage = "Verification failed: Donor's pledge has not been confirmed yet.";
+        }
+      }
+
+      // Block verification if rules aren't met
+      if (!isReadyForVerification) {
+        Navigator.pop(context);
+        _showErrorSnackBar(errorMessage);
+        return;
+      }
+
+      // ==========================================
+      // SUCCESS! UPDATE THE DATABASE
+      // ==========================================
+
+      String todayDate = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
+
+      // Update the milestones array to check off the final steps
+      for (var m in milestones) {
+        if (m['label'] == 'Drop-off Verified' || m['label'] == 'Distributed') {
+          m['done'] = true;
+          m['date'] = todayDate;
+        }
+      }
+
+      // FIX: Use `docReference.reference` to update the exact document in its exact subcollection path
+      await docReference.reference.update({
+        'status': 'Distributed',
+        'milestones': milestones,
+      });
+
+      await creditImpactIfMilestonesComplete(docReference.reference);
+      Navigator.pop(context); // Close loading spinner
+
+      // SHOW SUCCESS MESSAGE
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(LucideIcons.checkCircle, color: Colors.white),
+              SizedBox(width: 12),
+              Expanded(child: Text("Receipt verified & item distributed successfully!", style: TextStyle(fontWeight: FontWeight.bold))),
+            ],
+          ),
+          backgroundColor: Colors.green.shade600,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+
+    } catch (e) {
+      Navigator.pop(context); // Close loading spinner
+      _showErrorSnackBar("Error: ${e.toString()}");
+    }
+  }
+
+  // Helper function to show errors nicely
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(LucideIcons.alertCircle, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  // 3. VERIFY RECEIPT CARD (Big Blue QR Card)
+  // 3. VERIFY RECEIPT CARD (Big Blue QR Card)
+  Widget _buildVerifyReceiptCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2563EB), // Solid Blue
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2563EB).withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          )
+        ],
+      ),
+      child: Column(
+        children: [
+          const Icon(LucideIcons.qrCode, color: Colors.white, size: 48),
+          const SizedBox(height: 16),
+          Text(
+            "Verify Receipt",
+            style: GoogleFonts.inter(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "Scan a donor's QR code or enter their receipt ID manually to confirm item arrivals.",
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.5),
+          ),
+          const SizedBox(height: 24),
+
+          // Option 1: Open Scanner Button (Primary)
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _openScanner,
+              icon: const Icon(LucideIcons.maximize, size: 18), // or LucideIcons.scan
+              label: const Text("Scan QR Code", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF2563EB),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12), // Spacing between buttons
+
+          // Option 2: Enter ID Manually Button (Secondary)
+          // Option 2: Enter ID Manually Button (Secondary)
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _showManualEntryDialog(context), // <-- ADD THIS
+              icon: const Icon(LucideIcons.keyboard, size: 18),
+              label: const Text("Enter ID Manually", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white54, width: 1.5),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  void _showManualEntryDialog(BuildContext context) {
+    final TextEditingController idController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 1. Decorative Header Icon
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2563EB).withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(LucideIcons.keyboard, color: Color(0xFF2563EB), size: 32),
+                ),
+                const SizedBox(height: 16),
+
+                // 2. Title
+                Text(
+                  "Enter Receipt ID",
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // 3. Subtitle
+                const Text(
+                  "Type the donor's receipt ID or alphanumeric code exactly as it appears.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.black54, fontSize: 13, height: 1.5),
+                ),
+                const SizedBox(height: 24),
+
+                // 4. Styled Text Field
+                TextField(
+                  controller: idController,
+                  textAlign: TextAlign.center, // Centering text looks better for IDs
+                  style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+                  textCapitalization: TextCapitalization.characters, // Auto-capitalize for IDs
+                  decoration: InputDecoration(
+                    hintText: "e.g. REC-12345",
+                    hintStyle: TextStyle(color: Colors.grey.shade400, letterSpacing: 0, fontWeight: FontWeight.normal),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2),
+                    ),
+                  ),
+                  textInputAction: TextInputAction.done,
+                ),
+                const SizedBox(height: 24),
+
+                // 5. Full-Width Primary Action Button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final enteredId = idController.text.trim();
+                      if (enteredId.isNotEmpty) {
+                        Navigator.pop(context); // Close the popup dialog
+
+                        // Call the validation function
+                        _verifyReceiptId(enteredId);
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                    child: const Text("Verify Receipt", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // 6. Full-Width Cancel Button
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text("Cancel", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 15)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+  // ==========================================
+  // TAB 2: PHYSICAL GOODS REQUESTS & AI
+  // ==========================================
+
+  Widget _buildPhysicalGoodsUI() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Broadcast New Field Request", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        const SizedBox(height: 8),
+        const Text("Publish needs directly to the Donor Map.", style: TextStyle(color: Colors.grey)),
+        const SizedBox(height: 24),
+
+        SizedBox(
+          width: 250,
+          child: ElevatedButton.icon(
+            onPressed: () => _showAddNeedDialog(isPhysical: true),
+            icon: const Icon(LucideIcons.plusCircle, size: 18),
+            label: const Text("Create Item Request"),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+            ),
+          ),
+        )
+      ],
+    );
+  }
+
+  Widget _buildAIStrategyCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: const Color(0xFF2563EB).withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFF2563EB).withOpacity(0.1))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("AI Operations Strategy", style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF2563EB), fontSize: 12, letterSpacing: 0.5)),
+              GestureDetector(onTap: _generateMissionStrategy, child: const Icon(LucideIcons.refreshCw, size: 16, color: Color(0xFF2563EB)))
+            ],
+          ),
+          const SizedBox(height: 12),
+          _isAnalyzing
+              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Color(0xFF2563EB), strokeWidth: 2))
+              : Text(_aiStrategy, style: const TextStyle(fontSize: 14, color: Color(0xFF1E293B), fontWeight: FontWeight.w600, height: 1.5)),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // BACKEND LOGIC ACTIONS
+  // ==========================================
+
+  void _openScanner() async {
+    final scannedCode = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const QRScannerScreen()),
+    );
+
+    if (scannedCode != null && scannedCode is String) {
+      _processNGOQrScan(scannedCode);
+    }
+  }
+
+  // --- NEW: LOGIC TO PROCESS THE SCANNED QR CODE ---
+  Future<void> _processNGOQrScan(String qrData) async {
+    // 1. Show a loading indicator while fetching
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB))),
+    );
+
+    try {
+      // 2. Query Firestore for the donation package with this QR Code
+      var query = await FirebaseFirestore.instance
+          .collectionGroup('donations')
+          .where('qrCodeData', isEqualTo: qrData)
+          .get();
+
+      if (query.docs.isEmpty) {
+        if (mounted) Navigator.pop(context); // Close loading
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text("Invalid QR Code. Donation package not found."),
+                  backgroundColor: Colors.redAccent
+              )
+          );
+        }
+        return;
+      }
+
+      var doc = query.docs.first;
+      var data = doc.data();
+      List<dynamic> milestones = List.from(data['milestones'] ?? []);
+      String todayDate = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
+
+      bool alreadyVerified = false;
+
+      // 3. Update the required milestones to TRUE
+      for (var m in milestones) {
+        if (m['label'] == 'Drop-off Verified' || m['label'] == 'Distributed') {
+          // Check if it's already been distributed to prevent duplicate actions
+          if (m['done'] == true && m['label'] == 'Distributed') {
+            alreadyVerified = true;
+          }
+          m['done'] = true;
+          m['date'] = todayDate;
+        }
+      }
+
+      if (mounted) Navigator.pop(context); // Close loading
+
+      if (alreadyVerified) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text("Action Denied: This donation has already been verified and distributed."),
+                  backgroundColor: Colors.orange
+              )
+          );
+        }
+        return;
+      }
+
+      // 4. Show Verification Dialog to the NGO Officer
+      _showNGOVerificationDialog(doc.reference, data, milestones);
+
+    } catch (e) {
+      if (mounted) Navigator.pop(context); // Close loading
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error processing QR: $e"), backgroundColor: Colors.redAccent)
+        );
+      }
+    }
+  }
+
+  // --- NEW: NGO CONFIRMATION DIALOG ---
+  void _showNGOVerificationDialog(DocumentReference docRef, Map<String, dynamic> data, List<dynamic> updatedMilestones) {
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          bool isProcessing = false;
+
+          return StatefulBuilder(
+              builder: (context, setState) {
+                return Dialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    backgroundColor: Colors.white,
+                    child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(color: const Color(0xFF2563EB).withOpacity(0.1), shape: BoxShape.circle),
+                                child: const Icon(LucideIcons.checkSquare, color: Color(0xFF2563EB), size: 40),
+                              ),
+                              const SizedBox(height: 16),
+                              Text("Verify Receipt", style: GoogleFonts.inter(fontWeight: FontWeight.w900, fontSize: 22, color: const Color(0xFF1E293B))),
+                              const SizedBox(height: 8),
+
+                              // Display what item is being verified
+                              Text(data['itemName'] ?? "Donation Package", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF2563EB))),
+                              Text("From: ${data['deliveryMethod'] == 'driver' ? 'Logistics Courier' : 'Donor Drop-off'}", style: const TextStyle(color: Colors.grey)),
+
+                              const Divider(height: 32),
+                              const Text(
+                                  "Confirm that this item has been successfully received at the NGO Hub and marked for final distribution.",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Color(0xFF64748B), fontSize: 13, height: 1.5)
+                              ),
+                              const SizedBox(height: 24),
+
+                              // Confirm & Distribute Button
+                              SizedBox(
+                                  width: double.infinity,
+                                  height: 50,
+                                  child: ElevatedButton.icon(
+                                      icon: const Icon(LucideIcons.checkCircle),
+                                      label: const Text("Verify & Distribute", style: TextStyle(fontWeight: FontWeight.bold)),
+                                      style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFF2563EB),
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                                      ),
+                                      onPressed: isProcessing ? null : () async {
+                                        setState(() => isProcessing = true);
+
+                                        try {
+                                          // Update Firestore with the new milestones & completed status
+                                          await docRef.update({
+                                            'milestones': updatedMilestones,
+                                            'status': 'Distributed',
+                                          });
+
+                                          await creditImpactIfMilestonesComplete(docRef);
+                                          if (context.mounted) {
+                                            Navigator.pop(context); // Close dialog
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text("Success! Item verified and marked as distributed."),
+                                                  backgroundColor: Color(0xFF10B981), // Emerald Green
+                                                  behavior: SnackBarBehavior.floating,
+                                                )
+                                            );
+                                          }
+                                        } catch (e) {
+                                          setState(() => isProcessing = false);
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(content: Text("Error: $e"), backgroundColor: Colors.redAccent)
+                                          );
+                                        }
+                                      }
+                                  )
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                  onPressed: isProcessing ? null : () => Navigator.pop(context),
+                                  child: const Text("Cancel", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))
+                              )
+                            ]
+                        )
+                    )
+                );
+              }
+          );
+        }
+    );
+  }
+
+  void _showAddNeedDialog({required bool isPhysical}) {
+    final loc = TextEditingController();
+    final desc = TextEditingController();
+    String urgency = 'High';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 32),
+        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(isPhysical ? "REQUEST PHYSICAL GOODS" : "NEW FIELD REPORT",
+                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF2563EB), letterSpacing: 1.0)),
+            const SizedBox(height: 24),
+
+            TextField(
+                controller: loc,
+                decoration: InputDecoration(
+                    labelText: isPhysical ? "Drop-off Location" : "Location (District)",
+                    filled: true, fillColor: const Color(0xFFF8FAFC),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)
+                )
+            ),
+            const SizedBox(height: 16),
+
+            TextField(
+                controller: desc,
+                maxLines: 3,
+                decoration: InputDecoration(
+                    labelText: isPhysical ? "Items needed (e.g., 50x Rice)" : "Summary of Crisis",
+                    filled: true, fillColor: const Color(0xFFF8FAFC),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)
+                )
+            ),
+            const SizedBox(height: 24),
+
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2563EB), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                onPressed: () async {
+                  if (loc.text.isEmpty || desc.text.isEmpty) return;
+                  await _db.collection('needs').add({
+                    'ngoId': user?.uid,
+                    'locationName': loc.text,
+                    'description': desc.text,
+                    'urgency': urgency,
+                    'type': isPhysical ? 'Physical' : 'Field',
+                    'createdAt': FieldValue.serverTimestamp(),
+                    'lat': 4.21, 'lng': 101.9,
+                  });
+                  if (mounted) Navigator.pop(context);
+                },
+                child: const Text("PUBLISH TO MAP", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
+            ),
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// NEW SCREEN: DETAILED STATEMENTS
+// ==========================================
+class DetailedStatementScreen extends StatelessWidget {
+  const DetailedStatementScreen({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: Text("Transaction History", style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: Colors.black)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.black),
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        // Fetch the same collection
+        stream: FirebaseFirestore.instance.collectionGroup('donations').snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(child: Text("Error: ${snapshot.error}"));
+          }
+
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(child: Text("No transactions found."));
+          }
+
+          // 1. Filter out only 'money' donations
+          // 2. Convert to list
+          var transactions = snapshot.data!.docs.map((doc) {
+            return doc.data() as Map<String, dynamic>;
+          }).where((data) => data['type'] == 'money').toList();
+
+          // 3. Sort by date (Newest first)
+          transactions.sort((a, b) {
+            Timestamp? timeA = a['timestamp'];
+            Timestamp? timeB = b['timestamp'];
+            if (timeA == null || timeB == null) return 0;
+            return timeB.compareTo(timeA); // Descending order
+          });
+
+          if (transactions.isEmpty) {
+            return const Center(child: Text("No money transactions found."));
+          }
+
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: transactions.length,
+            separatorBuilder: (context, index) => const Divider(color: Color(0xFFE2E8F0)),
+            itemBuilder: (context, index) {
+              var tx = transactions[index];
+              double amount = (tx['amount'] as num? ?? 0.0).toDouble();
+
+              // Handle Date formatting
+              DateTime? date;
+              if (tx['timestamp'] != null) {
+                date = (tx['timestamp'] as Timestamp).toDate();
+              }
+              String dateString = date != null
+                  ? "${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}"
+                  : "Unknown Date";
+
+              // Get donor name if you save it, otherwise default to Anonymous
+              String donorName = tx['donorName'] ?? "Anonymous Donor";
+
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  height: 48,
+                  width: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDCFCE7), // Light green background
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.arrow_downward, color: Color(0xFF16A34A)), // Green arrow
+                ),
+                title: Text(
+                  "Donation Received",
+                  style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 4),
+                    Text("From: $donorName", style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                    Text(dateString, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ),
+                trailing: Text(
+                  "+ RM ${amount.toStringAsFixed(2)}",
+                  style: GoogleFonts.inter(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: const Color(0xFF16A34A) // Green text for positive amount
+                  ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -3890,14 +6016,84 @@ class _ReliefMapState extends State<ReliefMap> {
     }
   }
 
+  // --- NEW HELPER: Merges existing NGO items with new AI items ---
+  void _mergeItemsIntoTarget(Map<String, dynamic> target, Map<String, dynamic> source) {
+    Map<String, dynamic> targetItems = Map<String, dynamic>.from(target['needed_items'] ?? {});
+    Map<String, dynamic> sourceItems = Map<String, dynamic>.from(source['needed_items'] ?? {});
+
+    sourceItems.forEach((key, sourceList) {
+      if (sourceList is List) {
+        List<dynamic> tList = List.from(targetItems[key] ?? []);
+        for (var item in sourceList) {
+          String itemStr = item.toString().trim();
+          // Prevent duplicates and ignore placeholder
+          if (itemStr != "Blanket") {
+            bool exists = tList.any((t) => t.toString().trim().toLowerCase() == itemStr.toLowerCase());
+            if (!exists) {
+              tList.add(itemStr);
+            }
+          }
+        }
+        targetItems[key] = tList;
+      }
+    });
+    target['needed_items'] = targetItems;
+  }
+
   // Change this to return a bool (success/fail)
+  // Future<bool> _fetchNewDataFromAI() async {
+  //   try {
+  //     final apiKey = dotenv.env['GEMINI_KEY'];
+  //     print("API KEY: ${dotenv.env['GEMINI_KEY']}");
+  //     final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey!);
+  //
+  //     // Inside _fetchNewDataFromAI
+  //     final prompt = "Search active disaster situations in Malaysia (Last 48h). Categories: Flood Relief, Food Security, Medical Aid. Return strictly RAW JSON LIST ONLY. Provide exactly 3 specific items for each category in needed_items. Format: [{\"location\": \"string\", \"category\": \"string\", \"description\": \"string\", \"score\": 90, \"lat\": 4.0, \"lng\": 101.0, \"severities\": {\"edu\": \"Medium/High/Critical\", \"cloth\": \"Medium/High/Critical\", \"food\": \"Medium/High/Critical\", \"med\": \"Medium/High/Critical\", \"rel\": \"Medium/High/Critical\"}, \"needed_items\": {\"edu\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"cloth\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"food\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"med\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"rel\": [\"Item 1\", \"Item 2\", \"Item 3\"]}}]";
+  //     final response = await model.generateContent([Content.text(prompt)]);
+  //     String rawJson = response.text ?? "[]";
+  //
+  //     // Clean JSON string
+  //     rawJson = rawJson.replaceAll('```json', '').replaceAll('```', '').trim();
+  //     int start = rawJson.indexOf('[');
+  //     int end = rawJson.lastIndexOf(']');
+  //     if (start != -1 && end != -1) rawJson = rawJson.substring(start, end + 1);
+  //
+  //     final List<dynamic> decoded = jsonDecode(rawJson);
+  //
+  //     // SAVE TO FIRESTORE
+  //     await FirebaseFirestore.instance.collection('relief_cache').doc('current_status').set({
+  //       'results': decoded,
+  //       'timestamp': FieldValue.serverTimestamp(),
+  //     });
+  //
+  //     _updateUI(decoded, DateTime.now());
+  //     return true; // Success
+  //
+  //   } catch (e) {
+  //     debugPrint("AI Fetch Failed (Quota?): $e");
+  //     if (e.toString().contains('429') || e.toString().contains('quota')) {
+  //       debugPrint("Quota reached! Please wait 60 seconds.");
+  //       // Show a message to the user: "AI is resting, try again in a minute."
+  //     } else {
+  //       debugPrint("AI Error: $e");
+  //     }
+  //     return false; // Failed
+  //   }
+  // }
   Future<bool> _fetchNewDataFromAI() async {
     try {
+      // 1. FETCH OLD CACHE FIRST TO RESCUE NGO DATA
+      final oldSnapshot = await FirebaseFirestore.instance.collection('relief_cache').doc('current_status').get();
+      List<dynamic> oldResults = [];
+      if (oldSnapshot.exists) {
+        oldResults = oldSnapshot.data()?['results'] ?? [];
+      }
+
+      // 2. RUN AI GENERATION
       final apiKey = dotenv.env['GEMINI_KEY'];
       print("API KEY: ${dotenv.env['GEMINI_KEY']}");
       final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey!);
 
-      // Inside _fetchNewDataFromAI
       final prompt = "Search active disaster situations in Malaysia (Last 48h). Categories: Flood Relief, Food Security, Medical Aid. Return strictly RAW JSON LIST ONLY. Provide exactly 3 specific items for each category in needed_items. Format: [{\"location\": \"string\", \"category\": \"string\", \"description\": \"string\", \"score\": 90, \"lat\": 4.0, \"lng\": 101.0, \"severities\": {\"edu\": \"Medium/High/Critical\", \"cloth\": \"Medium/High/Critical\", \"food\": \"Medium/High/Critical\", \"med\": \"Medium/High/Critical\", \"rel\": \"Medium/High/Critical\"}, \"needed_items\": {\"edu\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"cloth\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"food\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"med\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"rel\": [\"Item 1\", \"Item 2\", \"Item 3\"]}}]";
       final response = await model.generateContent([Content.text(prompt)]);
       String rawJson = response.text ?? "[]";
@@ -3908,22 +6104,58 @@ class _ReliefMapState extends State<ReliefMap> {
       int end = rawJson.lastIndexOf(']');
       if (start != -1 && end != -1) rawJson = rawJson.substring(start, end + 1);
 
-      final List<dynamic> decoded = jsonDecode(rawJson);
+      final List<dynamic> newAiResults = jsonDecode(rawJson);
 
-      // SAVE TO FIRESTORE
+      // ==========================================
+      // 3. SMART MERGE LOGIC
+      // ==========================================
+      List<dynamic> mergedResults = [];
+
+      // Step A: Rescue all Manually Added Locations
+      for (var oldZone in oldResults) {
+        bool isManual = oldZone['isManual'] == true || (oldZone['description']?.toString().contains("NGO REPORT:") ?? false);
+        if (isManual) {
+          mergedResults.add(oldZone);
+        }
+      }
+
+      // Step B: Process New AI Locations & Rescue Items
+      for (var aiZone in newAiResults) {
+        String aiLoc = aiZone['location'] ?? "";
+
+        // Check if this AI location happens to be the same as a manual location we just added
+        int existingIndex = mergedResults.indexWhere((z) => z['location'] == aiLoc);
+
+        if (existingIndex != -1) {
+          // Just merge the AI items into the existing manual zone
+          _mergeItemsIntoTarget(mergedResults[existingIndex], aiZone);
+        } else {
+          // If it's a normal AI zone, check if it existed in the OLD data
+          // If it did, rescue any items the NGO might have manually added to it!
+          var oldAiZone = oldResults.firstWhere((z) => z['location'] == aiLoc, orElse: () => null);
+
+          if (oldAiZone != null) {
+            _mergeItemsIntoTarget(aiZone, oldAiZone as Map<String, dynamic>);
+          }
+
+          // Add the merged AI zone to the final list
+          mergedResults.add(aiZone);
+        }
+      }
+
+      // 4. SAVE MERGED DATA TO FIRESTORE
       await FirebaseFirestore.instance.collection('relief_cache').doc('current_status').set({
-        'results': decoded,
+        'results': mergedResults,
         'timestamp': FieldValue.serverTimestamp(),
       });
 
-      _updateUI(decoded, DateTime.now());
+      _updateUI(mergedResults, DateTime.now());
       return true; // Success
 
     } catch (e) {
       debugPrint("AI Fetch Failed (Quota?): $e");
       if (e.toString().contains('429') || e.toString().contains('quota')) {
         debugPrint("Quota reached! Please wait 60 seconds.");
-        // Show a message to the user: "AI is resting, try again in a minute."
       } else {
         debugPrint("AI Error: $e");
       }
@@ -4499,14 +6731,6 @@ class _ReliefMapState extends State<ReliefMap> {
                                 if (isUsingInternalWallet) {
                                   await userRef.update({
                                     'walletBalance': FieldValue.increment(-donateAmount),
-                                    'impactValue': FieldValue.increment(donateAmount),
-                                    'livesTouched': FieldValue.increment(calculatedLives),
-                                  });
-                                } else {
-                                  // External Bank: Only update Impact and Lives
-                                  await userRef.update({
-                                    'impactValue': FieldValue.increment(donateAmount),
-                                    'livesTouched': FieldValue.increment(calculatedLives),
                                   });
                                 }
 
@@ -4545,23 +6769,23 @@ class _ReliefMapState extends State<ReliefMap> {
                                 //   'timestamp': FieldValue.serverTimestamp(),
                                 // });
                                 String todayDate = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
-                                await userRef.collection('donations').add({
+                                DocumentReference newDonationRef = await userRef.collection('donations').add({
                                   'id': "KC-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}",
                                   'target': item['location'] ?? "Relief Project",
                                   'category': item['category'] ?? "Relief Aid",
-                                  'status': "Processing",
+                                  'status': "Funds Distributed",
                                   'type': 'money',
                                   'amount': donateAmount,
                                   'imageUrl': imageToSave,
+                                  'isCredited': false, // <--- ADD THIS FLAG
                                   'milestones': [
-                                    // ---> Replace 'Today' with todayDate <---
                                     {'label': 'Payment Verified', 'date': todayDate, 'done': true},
-                                    {'label': 'NGO Allocation', 'date': 'Pending', 'done': false},
-                                    {'label': 'Final Disbursement', 'date': '', 'done': false},
+                                    {'label': 'NGO Verified', 'date': todayDate, 'done': true}
                                   ],
                                   'timestamp': FieldValue.serverTimestamp(),
                                 });
 
+                                await creditImpactIfMilestonesComplete(newDonationRef);
                                 if (context.mounted) {
                                   setDialogState(() {
                                     isPaying = false;
@@ -4680,7 +6904,7 @@ class _ReliefMapState extends State<ReliefMap> {
                             _buildItemCategoryCard(
                               "Education",
                               LucideIcons.book,
-                              sev['edu'] ?? "abc",
+                              sev['edu'] ?? "Medium",
                                   () {
                                 setDialogState(() => selectedCategory = "Education");
                                 Future.delayed(const Duration(milliseconds: 150), () {
@@ -4695,7 +6919,7 @@ class _ReliefMapState extends State<ReliefMap> {
                             _buildItemCategoryCard(
                               "Clothing",
                               LucideIcons.shirt,
-                              sev['cloth'] ?? "abc",
+                              sev['cloth'] ?? "Medium",
                                   () {
                                 setDialogState(() => selectedCategory = "Clothing");
                                 Future.delayed(const Duration(milliseconds: 150), () {
@@ -4714,7 +6938,7 @@ class _ReliefMapState extends State<ReliefMap> {
                             _buildItemCategoryCard(
                               "Food",
                               LucideIcons.shoppingBag,
-                              sev['food'] ?? "abc",
+                              sev['food'] ?? "Medium",
                                   () {
                                 setDialogState(() => selectedCategory = "Food");
                                 Future.delayed(const Duration(milliseconds: 150), () {
@@ -4727,7 +6951,7 @@ class _ReliefMapState extends State<ReliefMap> {
                             _buildItemCategoryCard(
                               "Medical",
                               LucideIcons.stethoscope,
-                              sev['med'] ?? "abc",
+                              sev['med'] ?? "Medium",
                                   () {
                                 setDialogState(() => selectedCategory = "Medical");
                                 Future.delayed(const Duration(milliseconds: 150), () {
@@ -4746,7 +6970,7 @@ class _ReliefMapState extends State<ReliefMap> {
                             _buildItemCategoryCard(
                               "Disaster Relief",
                               LucideIcons.cloudLightning,
-                              sev['rel'] ?? "abc", // 'rel' matches your AI JSON key
+                              sev['rel'] ?? "Medium", // 'rel' matches your AI JSON key
                                   () {
                                 setDialogState(() => selectedCategory = "Disaster Relief");
                                 Future.delayed(const Duration(milliseconds: 150), () {
@@ -6146,6 +8370,7 @@ class _ReliefMapState extends State<ReliefMap> {
       'itemName': item,
       'imageUrl': imageUrl,
       'qrCodeData': qrString,
+      'isCredited': false,
       'milestones': finalMilestones, // Uses the updated list
       'timestamp': FieldValue.serverTimestamp(),
     });
@@ -6629,31 +8854,59 @@ class _NotificationBellState extends State<NotificationBell> {
           for (var doc in snapshot.data!.docs) {
             final data = doc.data() as Map<String, dynamic>;
             final List<dynamic> milestones = data['milestones'] ?? [];
-            final String itemName = data['itemName'] ?? (data['type'] == 'money' ? "Donation" : "Item");
+
+            final bool isMoney = data['type'] == 'money';
+            final String amountStr = data['amount'] != null ? "RM ${data['amount']}" : "Funds";
+            final String itemName = data['itemName'] ?? "Item";
             final String target = data['target'] ?? "Unknown Hub";
             final String method = data['deliveryMethod'] ?? "self";
 
             // Safely parse the document's main timestamp
             final DateTime docDateTime = _parseDateTime(data['timestamp']);
 
+            // Loop through milestones (Starts at 1 to skip the initial 'Pledge' step)
             for (int i = 1; i < milestones.length; i++) {
               final m = milestones[i] as Map<String, dynamic>;
 
               if (m['done'] == true) {
-                // If the milestone has a timestamp, use it. Otherwise, fallback to the document's timestamp
-                final DateTime milestoneDateTime = m['timestamp'] != null
-                    ? _parseDateTime(m['timestamp'])
-                    : docDateTime;
+
+                // ==========================================
+                // THE FIX: Properly Parse the Formatted Date String
+                // ==========================================
+                DateTime milestoneDateTime = docDateTime; // Default to document creation time
+
+                if (m['date'] != null) {
+                  String dateStr = m['date'].toString();
+                  if (dateStr != 'Today' && dateStr != 'Pending' && dateStr.isNotEmpty) {
+                    try {
+                      // We decode the specific pattern you used: "24 Feb 2026, 3:07 PM"
+                      milestoneDateTime = DateFormat('dd MMM yyyy, h:mm a').parse(dateStr);
+                    } catch (e) {
+                      milestoneDateTime = docDateTime; // Fallback if parsing fails
+                    }
+                  }
+                }
+
+                String bodyText;
+                IconData iconData;
+
+                if (isMoney) {
+                  bodyText = 'Update: Your donation of $amountStr for $target is now marked as ${m['label']}.';
+                  iconData = LucideIcons.banknote;
+                } else if (method == 'driver') {
+                  bodyText = 'Update: Your $itemName for $target has reached this status.';
+                  iconData = LucideIcons.truck;
+                } else {
+                  bodyText = 'Update: Your drop-off of $itemName for $target is verified.';
+                  iconData = LucideIcons.box;
+                }
 
                 notifications.add({
                   'title': m['label'] ?? 'Update',
-                  'body': method == 'driver'
-                      ? 'Update: Your $itemName for $target has reached this status.'
-                      : 'Update: Your drop-off for $target is verified.',
-                  'icon': method == 'driver' ? LucideIcons.truck : LucideIcons.box,
+                  'body': bodyText,
+                  'icon': iconData,
                   'color': i == milestones.length - 1 ? Colors.green : Colors.blue,
-                  // IMPORTANT: Ensure this is included so it's not null!
-                  'timestamp': milestoneDateTime,
+                  'timestamp': milestoneDateTime, // <-- Passes the accurate parsed time
                   'milestoneIndex': i,
                 });
               }
@@ -6661,7 +8914,6 @@ class _NotificationBellState extends State<NotificationBell> {
           }
         }
 
-        // Bulletproof sorting - safely fallback if anything is null
         // Bulletproof sorting with a Tie-Breaker
         notifications.sort((a, b) {
           final DateTime timeA = a['timestamp'] as DateTime? ?? DateTime.now();
@@ -6793,7 +9045,6 @@ class _NotificationBellState extends State<NotificationBell> {
   }
 
   Widget _buildNotificationItem(Map<String, dynamic> notif) {
-    // Bulletproof: If timestamp is somehow null here, fallback to DateTime.now()
     final DateTime dt = notif['timestamp'] as DateTime? ?? DateTime.now();
     final String timeAgo = _getTimeAgo(dt);
 
@@ -8566,6 +10817,377 @@ const Color kBlueBrand = Color(0xFF2563EB);
 // ==========================================
 // 6. MY IMPACT PAGE (DYNAMIC WITH FIRESTORE IMPACT SCORE)
 // ==========================================
+// class MyImpactPage extends StatelessWidget {
+//   const MyImpactPage({super.key});
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     final String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
+//
+//     return StreamBuilder<DocumentSnapshot>(
+//         stream: FirebaseFirestore.instance.collection('relief_cache').doc('current_status').snapshots(),
+//         builder: (context, cacheSnapshot) {
+//           // Initialize results list from cache
+//           List<dynamic> activeResults = [];
+//           if (cacheSnapshot.hasData && cacheSnapshot.data!.exists) {
+//             var cacheData = cacheSnapshot.data!.data() as Map<String, dynamic>;
+//             activeResults = cacheData['results'] as List<dynamic>? ?? [];
+//           }
+//
+//           return StreamBuilder<DocumentSnapshot>(
+//             stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+//             builder: (context, userSnapshot) {
+//               if (userSnapshot.connectionState == ConnectionState.waiting) {
+//                 return const Center(child: CircularProgressIndicator(color: kEmerald));
+//               }
+//
+//               var userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+//               double impactScore = (userData?['impactValue'] as num? ?? 0.0).toDouble();
+//
+//               return StreamBuilder<QuerySnapshot>(
+//                 stream: FirebaseFirestore.instance
+//                     .collection('users')
+//                     .doc(uid)
+//                     .collection('donations')
+//                     .orderBy('timestamp', descending: true)
+//                     .snapshots(),
+//                 builder: (context, snapshot) {
+//                   if (snapshot.connectionState == ConnectionState.waiting) {
+//                     return const Center(child: CircularProgressIndicator(color: kEmerald));
+//                   }
+//
+//                   final docs = snapshot.data?.docs ?? [];
+//                   double totalCash = 0;
+//                   int totalItems = 0;
+//
+//                   for (var doc in docs) {
+//                     final data = doc.data() as Map<String, dynamic>;
+//                     if (data['type'] == 'money') {
+//                       totalCash += (data['amount'] as num? ?? 0.0).toDouble();
+//                     } else if (data['type'] == 'item') {
+//                       totalItems += (data['quantity'] as num? ?? 1).toInt();
+//                     }
+//                   }
+//
+//                   return SingleChildScrollView(
+//                     padding: const EdgeInsets.all(24),
+//                     child: Column(
+//                       crossAxisAlignment: CrossAxisAlignment.start,
+//                       children: [
+//                         Text("My Charitable Journey",
+//                             style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w900, color: kSlate800)),
+//                         const SizedBox(height: 32),
+//                         _buildTierCard(impactScore),
+//                         const SizedBox(height: 16),
+//                         Row(
+//                           children: [
+//                             Expanded(
+//                                 child: _buildStatCard(
+//                                     "Cash Support",
+//                                     "RM ${NumberFormat.compact().format(totalCash)}", // <--- COMPACT FORMAT ADDED HERE
+//                                     kEmerald
+//                                 )
+//                             ),
+//                             const SizedBox(width: 16),
+//                             Expanded(
+//                                 child: _buildStatCard(
+//                                     "Physical Items",
+//                                     NumberFormat.compact().format(totalItems), // <--- COMPACT FORMAT ADDED HERE
+//                                     kBlueBrand
+//                                 )
+//                             ),
+//                           ],
+//                         ),
+//                         const SizedBox(height: 32),
+//                         Container(
+//                           decoration: BoxDecoration(
+//                             color: Colors.white,
+//                             borderRadius: BorderRadius.circular(24),
+//                             border: Border.all(color: kSlate100),
+//                           ),
+//                           child: Column(
+//                             children: [
+//                               if (docs.isEmpty)
+//                                 const Padding(
+//                                   padding: EdgeInsets.all(32),
+//                                   child: Center(child: Text("No contributions found yet.")),
+//                                 )
+//                               else
+//                                 SingleChildScrollView(
+//                                   scrollDirection: Axis.horizontal,
+//                                   child: DataTable(
+//                                     columns: const [
+//                                       DataColumn(label: Text("DATE")),
+//                                       DataColumn(label: Text("TYPE")),
+//                                       DataColumn(label: Text("CAUSE")),
+//                                       DataColumn(label: Text("NGO")),
+//                                       DataColumn(label: Text("IMPACT")),
+//                                       DataColumn(label: Text("ACTION")),
+//                                     ],
+//                                     // rows: docs.map((doc) {
+//                                     //   final donationData = doc.data() as Map<String, dynamic>;
+//                                     //   final String donationTarget = donationData['target'] ?? "";
+//                                     //
+//                                     //   // 1. FIRST check if the category is permanently saved in this specific donation record
+//                                     //   String matchedCategory = donationData['category']?.toString() ?? "";
+//                                     //
+//                                     //   // 2. If it's an old donation and missing the category, fallback to the live cache
+//                                     //   if (matchedCategory.isEmpty || matchedCategory == "null") {
+//                                     //     var foundRelief = activeResults.firstWhere(
+//                                     //           (res) => res['location'] == donationTarget,
+//                                     //       orElse: () => null,
+//                                     //     );
+//                                     //
+//                                     //     matchedCategory = foundRelief != null
+//                                     //         ? foundRelief['category'].toString()
+//                                     //         : "Relief Aid";
+//                                     //   }
+//                                     //
+//                                     //   // Ensure 'context' is the FIRST argument
+//                                     //   return _buildDataRow(context, donationData, matchedCategory);
+//                                     // }).toList(),
+//                                     rows: docs.map((doc) {
+//                                       final donationData = doc.data() as Map<String, dynamic>;
+//
+//                                       // 1. FETCH EXACT CATEGORY FROM THE DONATION RECORD
+//                                       String matchedCategory = donationData['category']?.toString() ?? "";
+//
+//                                       // 2. SMART FALLBACK FOR OLD DATA (Before the category field was added)
+//                                       if (matchedCategory.isEmpty || matchedCategory == "null") {
+//                                         String itemName = (donationData['itemName'] ?? "").toString().toLowerCase();
+//
+//                                         if (itemName.contains("cloth") || itemName.contains("shirt") || itemName.contains("pants")) {
+//                                           matchedCategory = "Clothing";
+//                                         } else if (itemName.contains("food") || itemName.contains("rice") || itemName.contains("water") || itemName.contains("meal")) {
+//                                           matchedCategory = "Food Security";
+//                                         } else if (itemName.contains("med") || itemName.contains("kit") || itemName.contains("cream")) {
+//                                           matchedCategory = "Medical Aid";
+//                                         } else if (itemName.contains("book") || itemName.contains("edu")) {
+//                                           matchedCategory = "Education";
+//                                         } else {
+//                                           matchedCategory = "Relief Aid"; // Final default
+//                                         }
+//                                       }
+//
+//                                       return _buildDataRow(context, donationData, matchedCategory);
+//                                     }).toList(),
+//                                   ),
+//                                 ),
+//                             ],
+//                           ),
+//                         )
+//                       ],
+//                     ),
+//                   );
+//                 },
+//               );
+//             },
+//           );
+//         }
+//     );
+//   }
+//
+//   // --- Helper Widgets ---
+//
+//   Widget _buildStatCard(String title, String value, Color valueColor) {
+//     return Container(
+//       padding: const EdgeInsets.all(20),
+//       decoration: BoxDecoration(
+//         color: Colors.white,
+//         borderRadius: BorderRadius.circular(20),
+//         border: Border.all(color: kSlate100),
+//       ),
+//       child: Column(
+//         crossAxisAlignment: CrossAxisAlignment.start,
+//         children: [
+//           Text(title, style: const TextStyle(color: kSlate500, fontWeight: FontWeight.bold, fontSize: 12)),
+//           const SizedBox(height: 12),
+//           Text(value, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w900, color: valueColor)),
+//         ],
+//       ),
+//     );
+//   }
+//
+//   Widget _buildTierCard(double impactScore) {
+//     String tierName = "BRONZE";
+//     String tierTitle = "Rising Supporter";
+//     String tierDesc = "Your journey of making an impact begins here.";
+//     Color badgeColor = const Color(0xFFFBBF24);
+//     Color bgColor = const Color(0xFF78350F);
+//
+//     if (impactScore >= 5000) {
+//       tierName = "PLATINUM";
+//       tierTitle = "National Hero";
+//       tierDesc = "You are in the top 1% of supporters this year.";
+//       badgeColor = const Color(0xFF22D3EE);
+//       bgColor = const Color(0xFF164E63);
+//     } else if (impactScore >= 1000) {
+//       tierName = "GOLD";
+//       tierTitle = "Community Pillar";
+//       tierDesc = "You are in the top 10% of Malaysian supporters.";
+//       badgeColor = const Color(0xFF34D399);
+//       bgColor = const Color(0xFF064E3B);
+//     } else if (impactScore >= 200) {
+//       tierName = "SILVER";
+//       tierTitle = "Generous Giver";
+//       tierDesc = "A consistent beacon of hope for communities.";
+//       badgeColor = const Color(0xFF94A3B8);
+//       bgColor = const Color(0xFF1E293B);
+//     }
+//
+//     return Container(
+//       width: double.infinity,
+//       padding: const EdgeInsets.all(20),
+//       decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20)),
+//       child: Column(
+//         crossAxisAlignment: CrossAxisAlignment.start,
+//         children: [
+//           Row(
+//             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+//             children: [
+//               Text("PHILANTHROPY TIER", style: TextStyle(color: badgeColor, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
+//               Container(
+//                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+//                 decoration: BoxDecoration(color: badgeColor, borderRadius: BorderRadius.circular(8)),
+//                 child: Text(tierName, style: TextStyle(color: bgColor, fontSize: 10, fontWeight: FontWeight.w900)),
+//               )
+//             ],
+//           ),
+//           const SizedBox(height: 8),
+//           Text(tierTitle, style: GoogleFonts.inter(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+//           Text(tierDesc, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+//         ],
+//       ),
+//     );
+//   }
+//
+//   DataRow _buildDataRow(BuildContext context, Map<String, dynamic> data, String fetchedCategory) {
+//     bool isMoney = data['type'] == 'money';
+//
+//     String dateStr = "N/A";
+//     if (data['timestamp'] != null) {
+//       DateTime d = (data['timestamp'] as Timestamp).toDate();
+//       dateStr = "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
+//     }
+//
+//     String location = data['target'] ?? "General Location";
+//     String dynamicCause = "$location, $fetchedCategory";
+//
+//     String impactText = isMoney
+//         ? "RM ${(data['amount'] as num? ?? 0.0).toStringAsFixed(2)}"
+//         : "${data['quantity'] ?? '1'}x ${data['itemName'] ?? 'Item'}";
+//
+//     return DataRow(cells: [
+//       DataCell(Text(dateStr)),
+//       DataCell(
+//         Container(
+//           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+//           decoration: BoxDecoration(
+//             color: (isMoney ? kEmerald : kBlueBrand).withOpacity(0.1),
+//             borderRadius: BorderRadius.circular(8),
+//           ),
+//           child: Text(
+//             isMoney ? "MONEY" : "ITEM",
+//             style: TextStyle(color: isMoney ? kEmerald : kBlueBrand, fontSize: 10, fontWeight: FontWeight.w900),
+//           ),
+//         ),
+//       ),
+//       // TO THIS:
+//       DataCell(
+//         SizedBox(
+//           width: 140, // Forces the text to wrap instead of stretching horizontally
+//           child: Text(
+//             dynamicCause,
+//             style: const TextStyle(fontWeight: FontWeight.w600),
+//             maxLines: 2,
+//             overflow: TextOverflow.ellipsis,
+//           ),
+//         ),
+//       ),
+//       DataCell(
+//         SizedBox(
+//           width: 100, // Keeps the NGO name compact
+//           child: Text(
+//             data['ngo'] ?? "MERCY Malaysia",
+//             style: const TextStyle(color: kSlate500),
+//             maxLines: 2,
+//             overflow: TextOverflow.ellipsis,
+//           ),
+//         ),
+//       ),
+//       DataCell(Text(impactText, style: const TextStyle(fontWeight: FontWeight.bold))),
+//       DataCell(
+//         ElevatedButton.icon(
+//           onPressed: () => _downloadCertificate(context, data, dynamicCause, impactText, dateStr),
+//           icon: const Icon(LucideIcons.download, size: 14, color: kSlate600),
+//           label: const Text("Certificate", style: TextStyle(color: kSlate800, fontSize: 12, fontWeight: FontWeight.w600)),
+//           style: ElevatedButton.styleFrom(
+//             backgroundColor: kSlate50,
+//             elevation: 0,
+//             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: kSlate100)),
+//             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+//           ),
+//         ),
+//       ),
+//     ]);
+//   }
+//
+//   // Import this at the top: import 'package:share_plus/share_plus.dart';
+//
+//   Future<void> _downloadCertificate(BuildContext context, Map<String, dynamic> data, String cause, String impact, String date) async {
+//     final pdf = pw.Document();
+//
+//     pdf.addPage(
+//       pw.Page(
+//         build: (pw.Context context) => pw.Center(
+//           child: pw.Column(
+//             mainAxisAlignment: pw.MainAxisAlignment.center,
+//             children: [
+//               pw.Text("KitaCare AI", style: pw.TextStyle(fontSize: 40, fontWeight: pw.FontWeight.bold)),
+//               pw.SizedBox(height: 20),
+//               pw.Text("CERTIFICATE OF DONATION", style: pw.TextStyle(fontSize: 24)),
+//               pw.Divider(),
+//               pw.SizedBox(height: 20),
+//               pw.Text("Presented to a KitaCare Donor"),
+//               pw.SizedBox(height: 10),
+//               pw.Text("Cause: $cause"),
+//               pw.Text("Impact: $impact"),
+//               pw.Text("Date: $date"),
+//               pw.SizedBox(height: 40),
+//               pw.Text("Thank you for your kindness!", style: pw.TextStyle(fontStyle: pw.FontStyle.italic)),
+//             ],
+//           ),
+//         ),
+//       ),
+//     );
+//
+//     try {
+//       // 1. Get a safe directory for storing the file
+//       final directory = await getApplicationDocumentsDirectory(); //
+//       final filePath = "${directory.path}/KitaCare_Certificate_${DateTime.now().millisecondsSinceEpoch}.pdf";
+//       final file = File(filePath);
+//
+//       // 2. Save the PDF bytes
+//       await file.writeAsBytes(await pdf.save());
+//
+//       // 3. Open the file using open_filex (it handles the content:// URI internally)
+//       final result = await OpenFilex.open(filePath); //
+//
+//       if (result.type != ResultType.done) {
+//         ScaffoldMessenger.of(context).showSnackBar(
+//             SnackBar(content: Text("Could not open file: ${result.message}"))
+//         );
+//       }
+//     } catch (e) {
+//       ScaffoldMessenger.of(context).showSnackBar(
+//           SnackBar(content: Text("Error: $e"))
+//       );
+//     }
+//   }
+// }
+// ==========================================
+// 6. MY IMPACT PAGE (DYNAMIC WITH FIRESTORE IMPACT SCORE)
+// ==========================================
 class MyImpactPage extends StatelessWidget {
   const MyImpactPage({super.key});
 
@@ -8605,11 +11227,32 @@ class MyImpactPage extends StatelessWidget {
                     return const Center(child: CircularProgressIndicator(color: kEmerald));
                   }
 
-                  final docs = snapshot.data?.docs ?? [];
+                  final allDocs = snapshot.data?.docs ?? [];
+
+                  // ========================================================
+                  // THE FIX: FILTER DONATIONS WHERE ALL MILESTONES ARE TRUE
+                  // ========================================================
+                  final completedDocs = allDocs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    List<dynamic> milestones = data['milestones'] ?? [];
+
+                    // If there are no milestones, don't count it as complete
+                    if (milestones.isEmpty) return false;
+
+                    // Ensure every single milestone is marked as done: true
+                    for (var m in milestones) {
+                      if (m['done'] != true) {
+                        return false;
+                      }
+                    }
+                    return true;
+                  }).toList();
+
                   double totalCash = 0;
                   int totalItems = 0;
 
-                  for (var doc in docs) {
+                  // ONLY loop through the completed/verified documents
+                  for (var doc in completedDocs) {
                     final data = doc.data() as Map<String, dynamic>;
                     if (data['type'] == 'money') {
                       totalCash += (data['amount'] as num? ?? 0.0).toDouble();
@@ -8633,7 +11276,7 @@ class MyImpactPage extends StatelessWidget {
                             Expanded(
                                 child: _buildStatCard(
                                     "Cash Support",
-                                    "RM ${NumberFormat.compact().format(totalCash)}", // <--- COMPACT FORMAT ADDED HERE
+                                    "RM ${NumberFormat.compact().format(totalCash)}",
                                     kEmerald
                                 )
                             ),
@@ -8641,7 +11284,7 @@ class MyImpactPage extends StatelessWidget {
                             Expanded(
                                 child: _buildStatCard(
                                     "Physical Items",
-                                    NumberFormat.compact().format(totalItems), // <--- COMPACT FORMAT ADDED HERE
+                                    NumberFormat.compact().format(totalItems),
                                     kBlueBrand
                                 )
                             ),
@@ -8656,10 +11299,17 @@ class MyImpactPage extends StatelessWidget {
                           ),
                           child: Column(
                             children: [
-                              if (docs.isEmpty)
+                              // ONLY show empty state if there are no COMPLETED donations
+                              if (completedDocs.isEmpty)
                                 const Padding(
                                   padding: EdgeInsets.all(32),
-                                  child: Center(child: Text("No contributions found yet.")),
+                                  child: Center(
+                                    child: Text(
+                                        "No completed contributions found yet.\n(Ongoing deliveries are shown on your Dashboard)",
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(color: kSlate400, height: 1.5)
+                                    ),
+                                  ),
                                 )
                               else
                                 SingleChildScrollView(
@@ -8673,35 +11323,14 @@ class MyImpactPage extends StatelessWidget {
                                       DataColumn(label: Text("IMPACT")),
                                       DataColumn(label: Text("ACTION")),
                                     ],
-                                    // rows: docs.map((doc) {
-                                    //   final donationData = doc.data() as Map<String, dynamic>;
-                                    //   final String donationTarget = donationData['target'] ?? "";
-                                    //
-                                    //   // 1. FIRST check if the category is permanently saved in this specific donation record
-                                    //   String matchedCategory = donationData['category']?.toString() ?? "";
-                                    //
-                                    //   // 2. If it's an old donation and missing the category, fallback to the live cache
-                                    //   if (matchedCategory.isEmpty || matchedCategory == "null") {
-                                    //     var foundRelief = activeResults.firstWhere(
-                                    //           (res) => res['location'] == donationTarget,
-                                    //       orElse: () => null,
-                                    //     );
-                                    //
-                                    //     matchedCategory = foundRelief != null
-                                    //         ? foundRelief['category'].toString()
-                                    //         : "Relief Aid";
-                                    //   }
-                                    //
-                                    //   // Ensure 'context' is the FIRST argument
-                                    //   return _buildDataRow(context, donationData, matchedCategory);
-                                    // }).toList(),
-                                    rows: docs.map((doc) {
+                                    // Use completedDocs instead of docs here
+                                    rows: completedDocs.map((doc) {
                                       final donationData = doc.data() as Map<String, dynamic>;
 
                                       // 1. FETCH EXACT CATEGORY FROM THE DONATION RECORD
                                       String matchedCategory = donationData['category']?.toString() ?? "";
 
-                                      // 2. SMART FALLBACK FOR OLD DATA (Before the category field was added)
+                                      // 2. SMART FALLBACK FOR OLD DATA
                                       if (matchedCategory.isEmpty || matchedCategory == "null") {
                                         String itemName = (donationData['itemName'] ?? "").toString().toLowerCase();
 
@@ -8841,10 +11470,9 @@ class MyImpactPage extends StatelessWidget {
           ),
         ),
       ),
-      // TO THIS:
       DataCell(
         SizedBox(
-          width: 140, // Forces the text to wrap instead of stretching horizontally
+          width: 140,
           child: Text(
             dynamicCause,
             style: const TextStyle(fontWeight: FontWeight.w600),
@@ -8855,7 +11483,7 @@ class MyImpactPage extends StatelessWidget {
       ),
       DataCell(
         SizedBox(
-          width: 100, // Keeps the NGO name compact
+          width: 100,
           child: Text(
             data['ngo'] ?? "MERCY Malaysia",
             style: const TextStyle(color: kSlate500),
@@ -8880,8 +11508,6 @@ class MyImpactPage extends StatelessWidget {
       ),
     ]);
   }
-
-  // Import this at the top: import 'package:share_plus/share_plus.dart';
 
   Future<void> _downloadCertificate(BuildContext context, Map<String, dynamic> data, String cause, String impact, String date) async {
     final pdf = pw.Document();
@@ -8911,16 +11537,12 @@ class MyImpactPage extends StatelessWidget {
     );
 
     try {
-      // 1. Get a safe directory for storing the file
-      final directory = await getApplicationDocumentsDirectory(); //
+      final directory = await getApplicationDocumentsDirectory();
       final filePath = "${directory.path}/KitaCare_Certificate_${DateTime.now().millisecondsSinceEpoch}.pdf";
       final file = File(filePath);
 
-      // 2. Save the PDF bytes
       await file.writeAsBytes(await pdf.save());
-
-      // 3. Open the file using open_filex (it handles the content:// URI internally)
-      final result = await OpenFilex.open(filePath); //
+      final result = await OpenFilex.open(filePath);
 
       if (result.type != ResultType.done) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -8932,5 +11554,74 @@ class MyImpactPage extends StatelessWidget {
           SnackBar(content: Text("Error: $e"))
       );
     }
+  }
+}
+// ==========================================
+// GLOBAL IMPACT CREDITING LOGIC
+// ==========================================
+Future<void> creditImpactIfMilestonesComplete(DocumentReference donationRef) async {
+  try {
+    final doc = await donationRef.get();
+    if (!doc.exists) return;
+
+    final data = doc.data() as Map<String, dynamic>;
+
+    // 1. Prevent double crediting
+    if (data['isCredited'] == true) return;
+
+    // 2. Check if ALL milestones are completed
+    List<dynamic> milestones = data['milestones'] ?? [];
+    if (milestones.isEmpty) return;
+
+    bool allDone = true;
+    for (var m in milestones) {
+      if (m['done'] != true) {
+        allDone = false;
+        break;
+      }
+    }
+
+    // 3. If everything is checked off, calculate and apply impact
+    if (allDone) {
+      double addedImpact = 0.0;
+      int addedLives = 0;
+
+      // Professional Calculation based on Contribution Type
+      if (data['type'] == 'money') {
+        double amount = (data['amount'] as num? ?? 0.0).toDouble();
+        addedImpact = amount;
+        addedLives = (amount / 10).floor(); // E.g. RM 10 = 1 life touched
+        if (addedLives < 1 && amount > 0) addedLives = 1;
+      } else if (data['type'] == 'item') {
+        int qty = (data['quantity'] as num? ?? 1).toInt();
+        addedImpact = qty * 50.0; // Estimated RM 50 impact value per physical item
+        addedLives = qty * 2;     // Estimated 2 lives helped per physical item
+      }
+
+      // Safely extract the donor's UID from the document path
+      String uid = donationRef.parent.parent!.id;
+
+      // Run a transaction to ensure exact sync
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final freshDoc = await transaction.get(donationRef);
+
+        // --- FIXED LINE HERE ---
+        final freshData = freshDoc.data() as Map<String, dynamic>?;
+        if (freshData?['isCredited'] == true) return;
+
+        final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+
+        transaction.update(userRef, {
+          'impactValue': FieldValue.increment(addedImpact),
+          'livesTouched': FieldValue.increment(addedLives),
+        });
+
+        transaction.update(donationRef, {
+          'isCredited': true,
+        });
+      });
+    }
+  } catch (e) {
+    debugPrint("Error crediting impact: $e");
   }
 }
