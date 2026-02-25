@@ -3590,80 +3590,6 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
   bool _isAnalyzing = false;
   String _aiStrategy = "Fetching internal logistics advisor...";
 
-  // ==========================================
-  // REAL BACKEND LOGIC: CALCULATING DATA FROM FIRESTORE
-  // ==========================================
-  Future<Map<String, dynamic>> _fetchRealLogisticsData() async {
-    final String ngoUid = FirebaseAuth.instance.currentUser?.uid ?? "";
-    
-    // 1. Fetch ALL donations across the entire app meant for this NGO
-    // Note: This requires a 'targetNGOId' field in your donation documents
-    var snapshot = await FirebaseFirestore.instance
-        .collectionGroup('donations')
-        .get();
-
-    if (snapshot.docs.isEmpty) {
-      return {
-        "transparency": 0.0,
-        "activeDrops": 0,
-        "avgDispatch": 0.0,
-        "chartBars": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-      };
-    }
-
-    int totalPhysicalDonations = 0;
-    int itemsWithProof = 0;
-    int activePackages = 0;
-    double totalDispatchDays = 0;
-    int completedCount = 0;
-
-    for (var doc in snapshot.docs) {
-      var data = doc.data();
-      
-      // We only care about physical items, not money
-      if (data['type'] == 'item') {
-        totalPhysicalDonations++;
-
-        // Count for Transparency: Does it have a proof photo?
-        if (data['proofOfDeliveryUrl'] != null || data['imageUrl'] != null) {
-          itemsWithProof++;
-        }
-
-        // Count for Active Drops: Is it NOT yet distributed?
-        if (data['status'] != 'Distributed') {
-          activePackages++;
-        }
-
-        // Calculate Dispatch Time: (Time completed - Time started)
-        if (data['status'] == 'Distributed' && data['timestamp'] != null) {
-          DateTime start = (data['timestamp'] as Timestamp).toDate();
-          DateTime end = DateTime.now(); // Fallback
-          if (data['milestones'] != null) {
-             // Try to get the actual distribution date from milestones
-             var milestones = data['milestones'] as List;
-             var lastStep = milestones.last;
-             if (lastStep['done'] == true) completedCount++;
-          }
-          totalDispatchDays += end.difference(start).inHours / 24;
-        }
-      }
-    }
-
-    // REAL MATH
-    double transparencyScore = totalPhysicalDonations > 0 
-        ? (itemsWithProof / totalPhysicalDonations) * 100 
-        : 100.0;
-        
-    double avgDelivery = completedCount > 0 ? totalDispatchDays / completedCount : 0.0;
-
-    return {
-      "transparency": transparencyScore,
-      "activeDrops": activePackages,
-      "avgDispatch": avgDelivery,
-      "chartBars": [0.2, 0.5, 0.3, 0.8, 0.4, 0.9, 0.7] // Based on real volume trends (not sure)
-    };
-  }
-
   @override
   void initState() {
     super.initState();
@@ -3719,7 +3645,7 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // NGO Header
+                  // NGO Header (Matches top of Image 1)
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -3729,17 +3655,20 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
                         child: const Icon(LucideIcons.building2, color: Colors.white, size: 24),
                       ),
                       const SizedBox(width: 16),
+
+                      // 1. Wrap the middle section in Expanded to prevent overflow
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // 2. Wrap the Name and Badge so they stack neatly if the screen is too narrow
                             Wrap(
                               crossAxisAlignment: WrapCrossAlignment.center,
                               spacing: 8,
                               runSpacing: 4,
                               children: [
                                 Text(
-                                    "MERCY Malaysia",
+                                    "MERCY Malaysia"?? "NGO Portal",
                                     style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w900, color: kSlate800)
                                 ),
                                 Container(
@@ -3761,16 +3690,33 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
                           ],
                         ),
                       ),
+
                       const SizedBox(width: 12),
+
+                      // 3. Responsive Button: Shows only icon on small phones, full text on tablets/web
                       ElevatedButton(
                         onPressed: () => _showNewFieldReportDialog(),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: kBlue,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: EdgeInsets.symmetric(
+                              horizontal: MediaQuery.of(context).size.width > 450 ? 16 : 12,
+                              vertical: 12
+                          ),
                           elevation: 0,
                         ),
-                        child: const Icon(LucideIcons.fileText, size: 16),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(LucideIcons.fileText, size: 16),
+                            // Conditionally hide text if screen is narrow (mobile)
+                            if (MediaQuery.of(context).size.width > 450) ...[
+                              const SizedBox(width: 8),
+                              const Text("New Field Report", style: TextStyle(fontWeight: FontWeight.bold)),
+                            ]
+                          ],
+                        ),
                       )
                     ],
                   ),
@@ -3780,7 +3726,6 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
                   _buildCustomTabBar(),
                   const SizedBox(height: 24),
 
-                  // --- THE UPDATED SWITCHER ---
                   if (_selectedTab == 0) ...[
                     // --- TAB 1: OPERATIONAL AREAS ---
                     Wrap(
@@ -3803,8 +3748,8 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
                         )
                       ],
                     ),
-                  ] else if (_selectedTab == 1) ...[
-                    // --- TAB 2: PHYSICAL GOODS REQUESTS ---
+                  ] else ...[
+                    // --- TAB 2: PHYSICAL GOODS REQUESTS (Image 1 Layout) ---
                     Wrap(
                       spacing: 24,
                       runSpacing: 24,
@@ -3825,17 +3770,372 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
                         )
                       ],
                     ),
-                  ] else ...[
-                    // --- TAB 3: REAL LOGISTICS DATA ---
-                    _buildMissionLogisticsView(), 
-                  ], // <--- Closed the Switcher
-                ], // <--- Closed the Column children
-              ), // <--- Closed the Column
-            ), // <--- Closed the SingleChildScrollView
-          ); // <--- Closed the Scaffold
-        } // <--- Closed the builder
+                  ]
+                ],
+              ),
+            ),
+          );
+        }
     );
   }
+
+  // --- DIALOG: REQUEST PHYSICAL GOODS (Matches Image 3) ---
+  // --- DIALOG: REQUEST PHYSICAL GOODS (Matches Image 2 + Location Dropdown) ---
+  // --- DIALOG: REQUEST PHYSICAL GOODS (Fixed Firebase Deep Update) ---
+  void _showRequestPhysicalGoodsDialog() {
+    final TextEditingController itemCtrl = TextEditingController();
+    final TextEditingController qtyCtrl = TextEditingController();
+
+    String? selectedLocation;
+    String selectedCategory = "Education"; // Default category
+    String selectedUrgency = "High";
+
+    String? errorMessage;
+    bool isSaving = false;
+
+    // Fetch active locations from relief_cache ONE TIME before the dialog builds
+    Future<List<String>> fetchActiveLocations() async {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('relief_cache').doc('current_status').get();
+        if (!doc.exists) return [];
+        final data = doc.data()!;
+        final results = data['results'] as List<dynamic>? ?? [];
+
+        // Extract unique location names
+        return results.map((e) => e['location'].toString()).toSet().toList();
+      } catch (e) {
+        return [];
+      }
+    }
+
+    final Future<List<String>> locationsFuture = fetchActiveLocations();
+
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          return StatefulBuilder(
+              builder: (context, setState) {
+                return Dialog(
+                  backgroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                  child: Container(
+                    width: 450, // Limits width on desktop
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Blue Header
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: const BoxDecoration(
+                            color: kBlue,
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("Request Physical Goods", style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                                  const Text("POST TO DONOR MAP", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
+                                ],
+                              ),
+                              IconButton(
+                                onPressed: () { if(!isSaving) Navigator.pop(context); },
+                                icon: const Icon(LucideIcons.x, color: Colors.white, size: 20),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              )
+                            ],
+                          ),
+                        ),
+
+                        // Form Body
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+
+                              // --- TARGET LOCATION DROPDOWN ---
+                              _buildFormLabel("TARGET LOCATION (ACTIVE ZONES)"),
+                              FutureBuilder<List<String>>(
+                                  future: locationsFuture,
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState == ConnectionState.waiting) {
+                                      return Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(border: Border.all(color: kSlate200), borderRadius: BorderRadius.circular(12)),
+                                        child: const Row(
+                                          children: [
+                                            SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                                            SizedBox(width: 12),
+                                            Text("Loading active zones...", style: TextStyle(color: kSlate500, fontSize: 14))
+                                          ],
+                                        ),
+                                      );
+                                    }
+
+                                    List<String> locations = snapshot.data ?? [];
+
+                                    if (locations.isEmpty) {
+                                      return Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
+                                        child: const Text("No active zones found. Please publish a Field Report first.", style: TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
+                                      );
+                                    }
+
+                                    if (selectedLocation == null || !locations.contains(selectedLocation)) {
+                                      selectedLocation = locations.first;
+                                    }
+
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      decoration: BoxDecoration(
+                                          border: Border.all(color: kSlate200),
+                                          borderRadius: BorderRadius.circular(12),
+                                          color: const Color(0xFFF8FAFC)
+                                      ),
+                                      child: DropdownButtonHideUnderline(
+                                        child: DropdownButton<String>(
+                                          value: selectedLocation,
+                                          isExpanded: true,
+                                          icon: const Icon(LucideIcons.chevronDown, size: 16),
+                                          items: locations.map((loc) => DropdownMenuItem(
+                                              value: loc,
+                                              child: Text(loc, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold))
+                                          )).toList(),
+                                          onChanged: (val) {
+                                            setState(() {
+                                              selectedLocation = val!;
+                                              errorMessage = null;
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    );
+                                  }
+                              ),
+                              const SizedBox(height: 16),
+
+                              _buildFormLabel("CATEGORY"),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                decoration: BoxDecoration(
+                                    border: Border.all(color: kSlate200),
+                                    borderRadius: BorderRadius.circular(12),
+                                    color: const Color(0xFFF8FAFC)
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: selectedCategory,
+                                    isExpanded: true,
+                                    icon: const Icon(LucideIcons.chevronDown, size: 16),
+                                    items: ["Education", "Food Security", "Medical Aid", "Clothing", "Disaster Relief"]
+                                        .map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 14)))).toList(),
+                                    onChanged: (val) {
+                                      setState(() {
+                                        selectedCategory = val!;
+                                        errorMessage = null;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              _buildFormLabel("SPECIFIC ITEM"),
+                              TextField(
+                                controller: itemCtrl,
+                                onChanged: (_) => setState(() => errorMessage = null),
+                                decoration: InputDecoration(
+                                  hintText: "e.g. Sejarah Books, Blankets...",
+                                  hintStyle: const TextStyle(color: kSlate400, fontSize: 14),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kSlate200)),
+                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kSlate200)),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        _buildFormLabel("URGENCY"),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                                          decoration: BoxDecoration(border: Border.all(color: kSlate200), borderRadius: BorderRadius.circular(12), color: const Color(0xFFF8FAFC)),
+                                          child: DropdownButtonHideUnderline(
+                                            child: DropdownButton<String>(
+                                              value: selectedUrgency,
+                                              isExpanded: true,
+                                              icon: const Icon(LucideIcons.chevronDown, size: 16),
+                                              items: ["Medium", "High", "Critical"]
+                                                  .map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 14)))).toList(),
+                                              onChanged: (val) => setState(() => selectedUrgency = val!),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 24),
+
+                              // --- INLINE ERROR MESSAGE ---
+                              if (errorMessage != null)
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  margin: const EdgeInsets.only(bottom: 16),
+                                  decoration: BoxDecoration(
+                                      color: Colors.red.shade50,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: Colors.red.shade200)
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(LucideIcons.alertCircle, color: Colors.red, size: 16),
+                                      const SizedBox(width: 8),
+                                      Expanded(child: Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold))),
+                                    ],
+                                  ),
+                                ),
+                              // ----------------------------
+
+                              // Submit Button
+                              SizedBox(
+                                width: double.infinity,
+                                height: 50,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: kBlue,
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      elevation: 0
+                                  ),
+                                  onPressed: isSaving ? null : () async {
+                                    // 1. Validation
+                                    if (selectedLocation == null) {
+                                      setState(() => errorMessage = "Please select a target location.");
+                                      return;
+                                    }
+                                    if (itemCtrl.text.trim().isEmpty || qtyCtrl.text.trim().isEmpty) {
+                                      setState(() => errorMessage = "Please fill in the item name.");
+                                      return;
+                                    }
+
+                                    setState(() {
+                                      isSaving = true;
+                                      errorMessage = null;
+                                    });
+
+                                    try {
+                                      // 1. Push to NGO's personal inventory list (For auditing)
+                                      await FirebaseFirestore.instance.collection('ngo_inventory_requests').add({
+                                        'ngoId': FirebaseAuth.instance.currentUser?.uid,
+                                        'location': selectedLocation,
+                                        'category': selectedCategory,
+                                        'item': itemCtrl.text.trim(),
+                                        'quantity': int.tryParse(qtyCtrl.text.trim()) ?? 1,
+                                        'urgency': selectedUrgency,
+                                        'timestamp': FieldValue.serverTimestamp(),
+                                      });
+
+                                      // ==========================================
+                                      // 2. THE FIX: PROPER DEEP COPY UPDATE TO FIRESTORE
+                                      // ==========================================
+                                      DocumentReference cacheRef = FirebaseFirestore.instance.collection('relief_cache').doc('current_status');
+                                      DocumentSnapshot cacheSnap = await cacheRef.get();
+
+                                      if (cacheSnap.exists) {
+                                        List<dynamic> results = List.from(cacheSnap['results'] ?? []);
+
+                                        // Find the zone matching the location
+                                        int zoneIndex = results.indexWhere((r) => r['location'] == selectedLocation);
+
+                                        if (zoneIndex != -1) {
+                                          // Map UI Category to JSON short keys used by AI
+                                          String catKey = 'rel';
+                                          if (selectedCategory == 'Food Security') catKey = 'food';
+                                          if (selectedCategory == 'Medical Aid') catKey = 'med';
+                                          if (selectedCategory == 'Education') catKey = 'edu';
+                                          if (selectedCategory == 'Clothing') catKey = 'cloth';
+
+                                          // --- DEEP COPY OF THE SPECIFIC ZONE ---
+                                          Map<String, dynamic> targetZone = Map<String, dynamic>.from(results[zoneIndex]);
+
+                                          // --- UPDATE NEEDED_ITEMS MAP ---
+                                          Map<String, dynamic> neededItems = Map<String, dynamic>.from(targetZone['needed_items'] ?? {});
+                                          List<dynamic> itemsList = List.from(neededItems[catKey] ?? []);
+
+                                          // Remove the generic placeholder if it exists!
+                                          itemsList.removeWhere((item) => item.toString() == "Blanket");
+
+                                          // Add the specific item (e.g. "sejarah books")
+                                          itemsList.add(itemCtrl.text.trim());
+                                          neededItems[catKey] = itemsList;
+                                          targetZone['needed_items'] = neededItems; // Put map back in zone
+
+                                          // --- UPDATE SEVERITIES MAP ---
+                                          Map<String, dynamic> severities = Map<String, dynamic>.from(targetZone['severities'] ?? {});
+                                          severities[catKey] = selectedUrgency;
+                                          targetZone['severities'] = severities; // Put map back in zone
+
+                                          // Replace the old zone map with our updated zone map
+                                          results[zoneIndex] = targetZone;
+
+                                          // Save the fully updated array back to cache
+                                          await cacheRef.update({'results': results});
+                                        }
+                                      }
+
+                                      // Close Dialog & Show Success
+                                      if (context.mounted) {
+                                        Navigator.pop(context);
+                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                            content: Text("Item successfully requested & published to the map!"),
+                                            backgroundColor: Colors.green
+                                        ));
+                                      }
+                                    } catch (e) {
+                                      setState(() {
+                                        isSaving = false;
+                                        errorMessage = "Error publishing request: $e";
+                                      });
+                                    }
+                                  },
+                                  child: isSaving
+                                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                      : const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text("Publish Item Request", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                      SizedBox(width: 8),
+                                      Icon(LucideIcons.arrowRight, size: 18)
+                                    ],
+                                  ),
+                                ),
+                              )
+                            ],
+                          ),
+                        )
+                      ],
+                    ),
+                  ),
+                );
+              }
+          );
+        }
+    );
+  }
+
   Widget _buildFormLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
@@ -4200,10 +4500,8 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
       child: Row(
         children: [
           _tabItem("Operational Areas", 0),
-          const SizedBox(width: 24),
-          _tabItem("Physical Goods", 1),
-          const SizedBox(width: 24),
-          _tabItem("Logistics Data", 2), // <--- ADD THIS
+          const SizedBox(width: 32),
+          _tabItem("Physical Goods Requests", 1),
         ],
       ),
     );
@@ -5740,94 +6038,6 @@ class _ReliefMapState extends State<ReliefMap> {
       }
     });
     target['needed_items'] = targetItems;
-  }
-  Widget _buildMissionOperationalData() {
-    return FutureBuilder<Map<String, dynamic>>(
-      future: _fetchRealLogisticsData(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: kBlue));
-        }
-
-        final data = snapshot.data!;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Mission Operational Data", 
-              style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w900, color: kSlate800)),
-            const Text("Tracking logistics speed, fund health, and physical inventory.",
-              style: TextStyle(color: kSlate500, fontSize: 13)),
-            const SizedBox(height: 32),
-
-            // LORRY DISPATCH RATE (REAL DATA)
-            _analyticCard("LORRY DISPATCH RATE", Column(
-              children: [
-                _buildRealChart(data['chartBars']),
-                const SizedBox(height: 16),
-                Text("Avg. delivery: ${data['avgDispatch'].toStringAsFixed(1)} Days", 
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: kBlue)),
-              ],
-            )),
-            
-            const SizedBox(height: 20),
-
-            // ACTIVE DROPS (REAL COUNT)
-            _analyticCard("INCOMING PHYSICAL GOODS", Column(
-              children: [
-                const Icon(LucideIcons.truck, color: kBlue, size: 32),
-                const SizedBox(height: 8),
-                Text("${data['activeDrops']} Active Drops", 
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-              ],
-            )),
-
-            const SizedBox(height: 20),
-
-            // TRANSPARENCY SCORE (REAL CALCULATION)
-            _analyticCard("TRANSPARENCY SCORE", Column(
-              children: [
-                Text("${data['transparency'].toStringAsFixed(1)}%", 
-                  style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w900, color: kBlue)),
-              ],
-            )),
-          ],
-        );
-      },
-    );
-  }
-
-  // Helper for the Card design
-  Widget _analyticCard(String title, Widget child) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: kSlate100),
-      ),
-      child: Column(
-        children: [
-          Text(title, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 1.1)),
-          const SizedBox(height: 20),
-          child,
-        ],
-      ),
-    );
-  }
-
-  // Helper for the Bar Chart
-  Widget _buildRealChart(List<double> bars) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: bars.map((val) => Container(
-        width: 25,
-        height: 80 * val,
-        decoration: BoxDecoration(color: kBlue.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
-      )).toList(),
-    );
   }
 
   // Change this to return a bool (success/fail)
