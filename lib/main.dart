@@ -993,9 +993,9 @@ class _AppShellState extends State<AppShell> {
     if (isNgo) {
       pages = [
         const NGODashboard(), // NGO's 1st Tab: Mission Hub
-        const ReliefMap(),    // NGO's 2nd Tab: Relief Map
+        ReliefMap(userRole: widget.role),     // NGO's 2nd Tab: Relief Map
         const AiAdvisorPage(role: 'ngo'), // NGO's 3rd Tab: NGO AI
-        const ReliefMap(), // NGO's 4th Tab: Logistics Data
+        const LogisticsDashboard(),  // NGO's 4th Tab: Logistics Data
       ];
       navItems = const [
         BottomNavigationBarItem(icon: Icon(LucideIcons.layoutDashboard), label: "Mission Hub"),
@@ -1017,6 +1017,7 @@ class _AppShellState extends State<AppShell> {
           scrollController: _dashboardScrollController,
         ),
         ReliefMap(
+          userRole: widget.role,
           onTopUp: () {
             setState(() => _index = 0);
             Future.delayed(const Duration(milliseconds: 300), () {
@@ -3075,10 +3076,207 @@ class _CourierDashboardState extends State<CourierDashboard> {
     );
   }
 
+  // void _showPackageActionDialog(DocumentReference docRef, Map<String, dynamic> data) {
+  //   List<dynamic> milestones = List.from(data['milestones'] ?? []);
+  //   bool isPickedUp = milestones.length > 1 && milestones[1]['done'] == true;
+  //   bool isDroppedOff = milestones.length > 3 && milestones[3]['done'] == true;
+  //
+  //   XFile? capturedImage;
+  //
+  //   showDialog(
+  //       context: context,
+  //       barrierDismissible: false,
+  //       builder: (context) {
+  //         return StatefulBuilder(
+  //             builder: (context, setDialogState) {
+  //               return Dialog(
+  //                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+  //                 backgroundColor: Colors.white,
+  //                 child: SingleChildScrollView(
+  //                   child: Padding(
+  //                     padding: const EdgeInsets.all(24.0),
+  //                     child: Column(
+  //                       mainAxisSize: MainAxisSize.min,
+  //                       children: [
+  //                         Container(
+  //                           padding: const EdgeInsets.all(12),
+  //                           decoration: BoxDecoration(color: Colors.orange.shade50, shape: BoxShape.circle),
+  //                           child: Icon(LucideIcons.package, color: Colors.orange.shade700, size: 32),
+  //                         ),
+  //                         const SizedBox(height: 16),
+  //                         Text(data['itemName'] ?? "Package", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
+  //                         Text("Target: ${data['target']}", style: const TextStyle(color: Colors.grey)),
+  //                         const Divider(height: 32),
+  //
+  //                         if (isDroppedOff) ...[
+  //                           const Icon(LucideIcons.checkCircle, color: kEmerald, size: 48),
+  //                           const SizedBox(height: 12),
+  //                           const Text("Delivery Completed", style: TextStyle(color: kEmerald, fontWeight: FontWeight.bold)),
+  //                           const SizedBox(height: 24),
+  //                           SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Close")))
+  //                         ]
+  //                         else if (!isPickedUp) ...[
+  //                           const Text("Action Required: Pick-up from Donor", style: TextStyle(fontWeight: FontWeight.bold)),
+  //                           const SizedBox(height: 24),
+  //                           // REPLACE THE EXISTING "Confirm Drop-Off" BUTTON WITH THIS:
+  //                           SizedBox(
+  //                             width: double.infinity,
+  //                             height: 50,
+  //                             child: ElevatedButton.icon(
+  //                               // 1. Change icon and text dynamically based on whether a photo was taken
+  //                               icon: Icon(capturedImage == null ? LucideIcons.skipForward : LucideIcons.checkSquare),
+  //                               label: Text(capturedImage == null ? "Drop-off Without Photo" : "Confirm Drop-Off"),
+  //
+  //                               // 2. Change color: Grey if no photo (discouraged), Green if photo exists (encouraged)
+  //                               style: ElevatedButton.styleFrom(
+  //                                   backgroundColor: capturedImage == null ? kSlate400 : kEmerald,
+  //                                   foregroundColor: Colors.white
+  //                               ),
+  //
+  //                               // 3. Remove the 'null' check so they can always press it
+  //                               onPressed: () async {
+  //                                 final nav = Navigator.of(context);
+  //                                 final messenger = ScaffoldMessenger.of(context);
+  //
+  //                                 final String courierUid = FirebaseAuth.instance.currentUser?.uid ?? "";
+  //
+  //                                 if (milestones.length > 3) {
+  //                                   milestones[2]['done'] = true;
+  //                                   milestones[2]['date'] = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
+  //                                 }
+  //
+  //                                 // 4. Create the update map
+  //                                 Map<String, dynamic> updateData = {
+  //                                   'milestones': milestones,
+  //                                   'status': 'Drop-off Verified',
+  //                                   'courierId': courierUid,
+  //                                 };
+  //
+  //                                 // 5. ONLY attach the proof URL if they actually took a photo!
+  //                                 if (capturedImage != null) {
+  //                                   updateData['proofOfDeliveryUrl'] = "https://images.unsplash.com/photo-1577705998148-6da4f3963bc8?w=400";
+  //                                 }
+  //
+  //                                 await docRef.update(updateData);
+  //
+  //                                 nav.pop();
+  //                                 messenger.showSnackBar(SnackBar(
+  //                                   content: Text(capturedImage == null
+  //                                       ? "Dropped off, but no photo proof was attached."
+  //                                       : "Drop-off Verified! Photo uploaded."),
+  //                                   backgroundColor: capturedImage == null ? Colors.orange : kEmerald,
+  //                                 ));
+  //                               },
+  //                             ),
+  //                           )
+  //                         ]
+  //                         else ...[
+  //                             const Text("Action Required: Drop-off at NGO Hub", style: TextStyle(fontWeight: FontWeight.bold)),
+  //                             const SizedBox(height: 16),
+  //
+  //                             GestureDetector(
+  //                               onTap: () async {
+  //                                 final ImagePicker picker = ImagePicker();
+  //                                 final XFile? photo = await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
+  //                                 if (photo != null) setDialogState(() => capturedImage = photo);
+  //                               },
+  //                               child: Container(
+  //                                 height: 150,
+  //                                 width: double.infinity,
+  //                                 decoration: BoxDecoration(
+  //                                     color: kSlate50,
+  //                                     border: Border.all(color: capturedImage != null ? kEmerald : kSlate300, width: 2),
+  //                                     borderRadius: BorderRadius.circular(16)
+  //                                 ),
+  //                                 child: capturedImage != null
+  //                                     ? ClipRRect(borderRadius: BorderRadius.circular(14), child: Image.file(File(capturedImage!.path), fit: BoxFit.cover, width: double.infinity))
+  //                                     : Column(
+  //                                   mainAxisAlignment: MainAxisAlignment.center,
+  //                                   children: [
+  //                                     Icon(LucideIcons.camera, color: Colors.orange.shade700, size: 32),
+  //                                     const SizedBox(height: 8),
+  //                                     const Text("Tap to take proof photo", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+  //                                   ],
+  //                                 ),
+  //                               ),
+  //                             ),
+  //
+  //                             const SizedBox(height: 24),
+  //
+  //                             SizedBox(
+  //                               width: double.infinity,
+  //                               height: 50,
+  //                               child: ElevatedButton.icon(
+  //                                 // 1. DYNAMIC ICON AND TEXT
+  //                                 icon: Icon(capturedImage == null ? LucideIcons.skipForward : LucideIcons.checkSquare),
+  //                                 label: Text(capturedImage == null ? "Drop-off Without Photo" : "Confirm Drop-Off"),
+  //
+  //                                 // 2. DYNAMIC COLOR: Grey if no photo, Green if photo is attached
+  //                                 style: ElevatedButton.styleFrom(
+  //                                     backgroundColor: capturedImage == null ? kSlate400 : kEmerald,
+  //                                     foregroundColor: Colors.white
+  //                                 ),
+  //
+  //                                 // 3. ONPRESSED IS ALWAYS ACTIVE NOW (No 'null' check)
+  //                                 onPressed: () async {
+  //                                   final nav = Navigator.of(context);
+  //                                   final messenger = ScaffoldMessenger.of(context);
+  //
+  //                                   final String courierUid = FirebaseAuth.instance.currentUser?.uid ?? "";
+  //
+  //                                   // Update milestone
+  //                                   if (milestones.length > 3) {
+  //                                     milestones[2]['done'] = true;
+  //                                     milestones[2]['date'] = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
+  //                                   }
+  //
+  //                                   // Base data to update
+  //                                   Map<String, dynamic> updateData = {
+  //                                     'milestones': milestones,
+  //                                     'status': 'Drop-off Verified',
+  //                                     'courierId': courierUid,
+  //                                   };
+  //
+  //                                   // ONLY add the photo URL if they actually took a picture!
+  //                                   if (capturedImage != null) {
+  //                                     updateData['proofOfDeliveryUrl'] = "https://images.unsplash.com/photo-1577705998148-6da4f3963bc8?w=400";
+  //                                   }
+  //
+  //                                   // Push to Firebase
+  //                                   await docRef.update(updateData);
+  //
+  //                                   nav.pop();
+  //                                   messenger.showSnackBar(SnackBar(
+  //                                     content: Text(capturedImage == null
+  //                                         ? "Dropped off without photo proof."
+  //                                         : "Drop-off Verified! Photo uploaded."),
+  //                                     backgroundColor: capturedImage == null ? Colors.orange : kEmerald,
+  //                                   ));
+  //                                 },
+  //                               ),
+  //                             )
+  //                           ],
+  //
+  //                         if (!isDroppedOff)
+  //                           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.grey)))
+  //                       ],
+  //                     ),
+  //                   ),
+  //                 ),
+  //               );
+  //             }
+  //         );
+  //       }
+  //   );
+  // }
   void _showPackageActionDialog(DocumentReference docRef, Map<String, dynamic> data) {
     List<dynamic> milestones = List.from(data['milestones'] ?? []);
+
+    // FIX 1: Correct the Milestone Indexes for Courier!
+    // Index 1 = Picked Up & In Transit
+    // Index 2 = Arrived at NGO Hub (This is the Courier's Drop-off)
     bool isPickedUp = milestones.length > 1 && milestones[1]['done'] == true;
-    bool isDroppedOff = milestones.length > 3 && milestones[3]['done'] == true;
+    bool isArrivedAtHub = milestones.length > 2 && milestones[2]['done'] == true;
 
     XFile? capturedImage;
 
@@ -3107,7 +3305,8 @@ class _CourierDashboardState extends State<CourierDashboard> {
                           Text("Target: ${data['target']}", style: const TextStyle(color: Colors.grey)),
                           const Divider(height: 32),
 
-                          if (isDroppedOff) ...[
+                          if (isArrivedAtHub) ...[
+                            // STATE 3: ALREADY DROPPED OFF
                             const Icon(LucideIcons.checkCircle, color: kEmerald, size: 48),
                             const SizedBox(height: 12),
                             const Text("Delivery Completed", style: TextStyle(color: kEmerald, fontWeight: FontWeight.bold)),
@@ -3115,6 +3314,7 @@ class _CourierDashboardState extends State<CourierDashboard> {
                             SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Close")))
                           ]
                           else if (!isPickedUp) ...[
+                            // STATE 1: NEEDS PICK-UP FIRST
                             const Text("Action Required: Pick-up from Donor", style: TextStyle(fontWeight: FontWeight.bold)),
                             const SizedBox(height: 24),
                             SizedBox(
@@ -3125,7 +3325,6 @@ class _CourierDashboardState extends State<CourierDashboard> {
                                 label: const Text("Confirm Pick-Up"),
                                 style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white),
                                 onPressed: () async {
-                                  // --- CRITICAL FIX: Safe Navigator Storage ---
                                   final nav = Navigator.of(context);
                                   final messenger = ScaffoldMessenger.of(context);
 
@@ -3149,9 +3348,11 @@ class _CourierDashboardState extends State<CourierDashboard> {
                             )
                           ]
                           else ...[
+                              // STATE 2: PICKED UP, NOW NEEDS DROP-OFF
                               const Text("Action Required: Drop-off at NGO Hub", style: TextStyle(fontWeight: FontWeight.bold)),
                               const SizedBox(height: 16),
 
+                              // Optional Camera Button
                               GestureDetector(
                                 onTap: () async {
                                   final ImagePicker picker = ImagePicker();
@@ -3173,7 +3374,7 @@ class _CourierDashboardState extends State<CourierDashboard> {
                                     children: [
                                       Icon(LucideIcons.camera, color: Colors.orange.shade700, size: 32),
                                       const SizedBox(height: 8),
-                                      const Text("Tap to take proof photo", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                                      const Text("Tap to take proof photo (Optional)", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
                                     ],
                                   ),
                                 ),
@@ -3181,44 +3382,55 @@ class _CourierDashboardState extends State<CourierDashboard> {
 
                               const SizedBox(height: 24),
 
+                              // Dynamic Drop-off Button
                               SizedBox(
                                 width: double.infinity,
                                 height: 50,
                                 child: ElevatedButton.icon(
-                                  icon: const Icon(LucideIcons.checkSquare),
-                                  label: const Text("Confirm Drop-Off"),
-                                  style: ElevatedButton.styleFrom(backgroundColor: kEmerald, foregroundColor: Colors.white),
-                                  onPressed: capturedImage == null ? null : () async {
-                                    // --- CRITICAL FIX: Safe Navigator Storage ---
+                                  icon: Icon(capturedImage == null ? LucideIcons.skipForward : LucideIcons.checkSquare),
+                                  label: Text(capturedImage == null ? "Drop-off Without Photo" : "Confirm Drop-Off"),
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: capturedImage == null ? kSlate400 : kEmerald,
+                                      foregroundColor: Colors.white
+                                  ),
+                                  onPressed: () async {
                                     final nav = Navigator.of(context);
                                     final messenger = ScaffoldMessenger.of(context);
 
-                                    String simulatedProofUrl = "https://images.unsplash.com/photo-1577705998148-6da4f3963bc8?w=400";
                                     final String courierUid = FirebaseAuth.instance.currentUser?.uid ?? "";
 
-                                    if (milestones.length > 3) {
+                                    // FIX 2: Update Index 2 (Arrived at NGO Hub)
+                                    if (milestones.length > 2) {
                                       milestones[2]['done'] = true;
                                       milestones[2]['date'] = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
                                     }
 
-                                    await docRef.update({
+                                    // FIX 3: Status is 'Arrived at NGO Hub', NOT 'Drop-off Verified'
+                                    Map<String, dynamic> updateData = {
                                       'milestones': milestones,
-                                      'status': 'Drop-off Verified',
-                                      'proofOfDeliveryUrl': simulatedProofUrl,
+                                      'status': 'Arrived at NGO Hub',
                                       'courierId': courierUid,
-                                    });
+                                    };
+
+                                    if (capturedImage != null) {
+                                      updateData['proofOfDeliveryUrl'] = "https://images.unsplash.com/photo-1577705998148-6da4f3963bc8?w=400";
+                                    }
+
+                                    await docRef.update(updateData);
 
                                     nav.pop();
-                                    messenger.showSnackBar(const SnackBar(
-                                      content: Text("Drop-off Verified! Photo uploaded."),
-                                      backgroundColor: kEmerald,
+                                    messenger.showSnackBar(SnackBar(
+                                      content: Text(capturedImage == null
+                                          ? "Dropped off without photo proof."
+                                          : "Drop-off Verified! Photo uploaded."),
+                                      backgroundColor: capturedImage == null ? Colors.orange : kEmerald,
                                     ));
                                   },
                                 ),
                               )
                             ],
 
-                          if (!isDroppedOff)
+                          if (!isArrivedAtHub)
                             TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.grey)))
                         ],
                       ),
@@ -3242,7 +3454,7 @@ class _CourierDashboardState extends State<CourierDashboard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("Logistics Hub", style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w900, color: kSlate800)),
+              Text("Mission Operational Data", style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w900, color: kSlate800)),
               const Text("Courier Access Terminal", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
               const SizedBox(height: 32),
 
@@ -3594,6 +3806,7 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
   void initState() {
     super.initState();
     _generateMissionStrategy();
+    ensureReliefDataIsSynced();
   }
 
   // ==========================================
@@ -3743,13 +3956,15 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
                               _buildFundsSummaryCard(context, ngoData),
                               const SizedBox(height: 24),
                               _buildVerifyReceiptCard(),
+                              const SizedBox(height: 24), // <-- Gap before new card
+                              _buildVerifyFundsCard(),    // <-- NEW MONEY CARD HERE
                             ],
                           ),
                         )
                       ],
                     ),
                   ] else ...[
-                    // --- TAB 2: PHYSICAL GOODS REQUESTS (Image 1 Layout) ---
+                    // --- TAB 2: PHYSICAL GOODS REQUESTS ---
                     Wrap(
                       spacing: 24,
                       runSpacing: 24,
@@ -3765,6 +3980,8 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
                               _buildFundsSummaryCard(context, ngoData),
                               const SizedBox(height: 24),
                               _buildVerifyReceiptCard(),
+                              const SizedBox(height: 24), // <-- Gap before new card
+                              _buildVerifyFundsCard(),    // <-- NEW MONEY CARD HERE
                             ],
                           ),
                         )
@@ -4026,7 +4243,7 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
                                       setState(() => errorMessage = "Please select a target location.");
                                       return;
                                     }
-                                    if (itemCtrl.text.trim().isEmpty || qtyCtrl.text.trim().isEmpty) {
+                                    if (itemCtrl.text.trim().isEmpty) {
                                       setState(() => errorMessage = "Please fill in the item name.");
                                       return;
                                     }
@@ -5043,27 +5260,26 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
       bool isAlreadyDistributed = false;
 
       // Make a modifiable copy of the milestones
+      // ==========================================
+      // NEW 2-STEP RULE CHECKER
+      // ==========================================
+      bool isReceived = false;
+      bool isDistributed = false;
       List<dynamic> milestones = List.from(data['milestones'] ?? []);
 
-      // Scan through the milestones
-      for (var milestone in milestones) {
-        if (milestone['label'] == 'Picked Up & In Transit') {
-          if (milestone['done'] == true) isPickedUpDone = true;
-        }
-        if (milestone['label'] == 'Arrived at NGO Hub') {
+      for (var m in milestones) {
+        if (m['label'] == 'Picked Up & In Transit' && m['done'] == true) isPickedUpDone = true;
+        if (m['label'] == 'Arrived at NGO Hub') {
           hasArrivedAtHubMilestone = true;
-          if (milestone['done'] == true) isArrivedAtHubDone = true;
+          if (m['done'] == true) isArrivedAtHubDone = true;
         }
-        if (milestone['label'] == 'Pledge Confirmed') {
-          if (milestone['done'] == true) isPledgeConfirmedDone = true;
-        }
-        // Check if it's already verified to prevent duplicate scanning
-        if (milestone['label'] == 'Distributed' && milestone['done'] == true) {
-          isAlreadyDistributed = true;
-        }
+        if (m['label'] == 'Pledge Confirmed' && m['done'] == true) isPledgeConfirmedDone = true;
+
+        if (m['label'] == 'Drop-off Verified' && m['done'] == true) isReceived = true;
+        if (m['label'] == 'Distributed' && m['done'] == true) isDistributed = true;
       }
 
-      if (isAlreadyDistributed) {
+      if (isDistributed) {
         Navigator.pop(context);
         _showErrorSnackBar("Action Denied: This donation has already been verified and distributed.");
         return;
@@ -5072,77 +5288,36 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
       bool isReadyForVerification = false;
       String errorMessage = "";
 
-      // Logic: Courier vs Self Drop-off
-      if (hasArrivedAtHubMilestone) {
-        // --- NEW COURIER LOGIC: Both must be true ---
-        if (isPickedUpDone && isArrivedAtHubDone) {
-          isReadyForVerification = true;
-        } else {
-          // Dynamic error messages depending on where the courier is
-          if (!isPickedUpDone) {
-            errorMessage = "Verification failed: The courier has not picked up this item yet.";
-          } else if (!isArrivedAtHubDone) {
-            errorMessage = "Verification failed: The courier has not dropped off this item at the NGO Hub yet.";
+      // IF NOT RECEIVED YET, CHECK IF IT'S READY TO BE RECEIVED
+      if (!isReceived) {
+        if (hasArrivedAtHubMilestone) { // Courier
+          if (isPickedUpDone && isArrivedAtHubDone) {
+            isReadyForVerification = true;
+          } else {
+            if (!isPickedUpDone) errorMessage = "Verification failed: Courier hasn't picked this up.";
+            else if (!isArrivedAtHubDone) errorMessage = "Verification failed: Courier hasn't dropped this at the Hub.";
           }
+        } else { // Self Drop-off
+          if (isPledgeConfirmedDone) isReadyForVerification = true;
+          else errorMessage = "Verification failed: Pledge not confirmed.";
         }
+
+        if (!isReadyForVerification) {
+          Navigator.pop(context);
+          _showErrorSnackBar(errorMessage);
+          return;
+        }
+
+        Navigator.pop(context); // Close spinner
+        _showNGOActionDialog(docReference.reference, data, milestones, 'receive');
       } else {
-        // --- SELF DROP-OFF LOGIC ---
-        if (isPledgeConfirmedDone) {
-          isReadyForVerification = true;
-        } else {
-          errorMessage = "Verification failed: Donor's pledge has not been confirmed yet.";
-        }
+        // ALREADY RECEIVED. PROCEED TO DISTRIBUTE.
+        Navigator.pop(context); // Close spinner
+        _showNGOActionDialog(docReference.reference, data, milestones, 'distribute');
       }
-
-      // Block verification if rules aren't met
-      if (!isReadyForVerification) {
-        Navigator.pop(context);
-        _showErrorSnackBar(errorMessage);
-        return;
-      }
-
-      // ==========================================
-      // SUCCESS! UPDATE THE DATABASE
-      // ==========================================
-
-      String todayDate = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
-
-      // Update the milestones array to check off the final steps
-      for (var m in milestones) {
-        if (m['label'] == 'Drop-off Verified' || m['label'] == 'Distributed') {
-          m['done'] = true;
-          m['date'] = todayDate;
-        }
-      }
-
-      // FIX: Use `docReference.reference` to update the exact document in its exact subcollection path
-      await docReference.reference.update({
-        'status': 'Distributed',
-        'milestones': milestones,
-      });
-
-      await creditImpactIfMilestonesComplete(docReference.reference);
-      Navigator.pop(context); // Close loading spinner
-
-      // SHOW SUCCESS MESSAGE
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Row(
-            children: [
-              Icon(LucideIcons.checkCircle, color: Colors.white),
-              SizedBox(width: 12),
-              Expanded(child: Text("Receipt verified & item distributed successfully!", style: TextStyle(fontWeight: FontWeight.bold))),
-            ],
-          ),
-          backgroundColor: Colors.green.shade600,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
 
     } catch (e) {
-      Navigator.pop(context); // Close loading spinner
+      Navigator.pop(context);
       _showErrorSnackBar("Error: ${e.toString()}");
     }
   }
@@ -5166,6 +5341,7 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
     );
   }
 
+  // 3. VERIFY RECEIPT CARD (Big Blue QR Card)
   // 3. VERIFY RECEIPT CARD (Big Blue QR Card)
   // 3. VERIFY RECEIPT CARD (Big Blue QR Card)
   Widget _buildVerifyReceiptCard() {
@@ -5219,11 +5395,10 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
           const SizedBox(height: 12), // Spacing between buttons
 
           // Option 2: Enter ID Manually Button (Secondary)
-          // Option 2: Enter ID Manually Button (Secondary)
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: () => _showManualEntryDialog(context), // <-- ADD THIS
+              onPressed: () => _showManualEntryDialog(context),
               icon: const Icon(LucideIcons.keyboard, size: 18),
               label: const Text("Enter ID Manually", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               style: OutlinedButton.styleFrom(
@@ -5237,6 +5412,216 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
         ],
       ),
     );
+  }
+
+  // --- NEW: VERIFY FUNDS CARD ---
+  Widget _buildVerifyFundsCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: kEmerald, // Green theme for money
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: kEmerald.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          )
+        ],
+      ),
+      child: Column(
+        children: [
+          const Icon(LucideIcons.banknote, color: Colors.white, size: 48),
+          const SizedBox(height: 16),
+          Text(
+            "Log Fund Disbursement",
+            style: GoogleFonts.inter(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "Enter a donor's monetary receipt ID to officially mark their funds as distributed to victims.",
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.5),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _showFundManualEntryDialog(context),
+              icon: const Icon(LucideIcons.keyboard, size: 18),
+              label: const Text("Enter Receipt ID", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: kEmerald,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  // --- NEW: FUNDS MANUAL ENTRY DIALOG ---
+  void _showFundManualEntryDialog(BuildContext context) {
+    final TextEditingController idController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: kEmerald.withOpacity(0.1), shape: BoxShape.circle),
+                  child: const Icon(LucideIcons.banknote, color: kEmerald, size: 32),
+                ),
+                const SizedBox(height: 16),
+                Text("Verify Funds", style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.black87)),
+                const SizedBox(height: 8),
+                const Text("Type the donor's monetary receipt ID exactly as it appears.", textAlign: TextAlign.center, style: TextStyle(color: Colors.black54, fontSize: 13, height: 1.5)),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: idController,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    hintText: "e.g. KC-12345",
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kEmerald, width: 2)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final enteredId = idController.text.trim();
+                      if (enteredId.isNotEmpty) {
+                        Navigator.pop(context);
+                        _verifyFundReceiptId(enteredId); // Call logic
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kEmerald,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text("Confirm Disbursement", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text("Cancel", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // --- NEW: FIREBASE LOGIC FOR FUNDS VERIFICATION ---
+  Future<void> _verifyFundReceiptId(String receiptId) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator(color: kEmerald)),
+    );
+
+    try {
+      var querySnapshot = await FirebaseFirestore.instance.collectionGroup('donations').where('id', isEqualTo: receiptId).limit(1).get();
+
+      if (querySnapshot.docs.isEmpty) {
+        Navigator.pop(context);
+        _showErrorSnackBar("Receipt ID not found in the system.");
+        return;
+      }
+
+      final docReference = querySnapshot.docs.first;
+      final data = docReference.data();
+
+      // Ensure this is actually a MONEY donation
+      if (data['type'] != 'money') {
+        Navigator.pop(context);
+        _showErrorSnackBar("This receipt is for a physical item. Please use the Blue Item Scanner above.");
+        return;
+      }
+
+      bool isAlreadyDistributed = false;
+      List<dynamic> milestones = List.from(data['milestones'] ?? []);
+
+      for (var m in milestones) {
+        if (m['label'] == 'Distributed' && m['done'] == true) {
+          isAlreadyDistributed = true;
+        }
+      }
+
+      if (isAlreadyDistributed) {
+        Navigator.pop(context);
+        _showErrorSnackBar("Action Denied: These funds have already been marked as distributed.");
+        return;
+      }
+
+      String todayDate = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
+
+      for (var m in milestones) {
+        if (m['label'] == 'Distributed') {
+          m['done'] = true;
+          m['date'] = todayDate;
+        }
+      }
+
+      // Update Database
+      await docReference.reference.update({
+        'status': 'Funds Distributed',
+        'milestones': milestones,
+      });
+
+      // Give Donor Impact Points!
+      await creditImpactIfMilestonesComplete(docReference.reference);
+
+      Navigator.pop(context); // Close spinner
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(LucideIcons.checkCircle, color: Colors.white),
+              SizedBox(width: 12),
+              Expanded(child: Text("Funds verified & logged as distributed!", style: TextStyle(fontWeight: FontWeight.bold))),
+            ],
+          ),
+          backgroundColor: kEmerald,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+
+    } catch (e) {
+      Navigator.pop(context);
+      _showErrorSnackBar("Error: ${e.toString()}");
+    }
   }
 
   void _showManualEntryDialog(BuildContext context) {
@@ -5428,8 +5813,80 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
   }
 
   // --- NEW: LOGIC TO PROCESS THE SCANNED QR CODE ---
+  // Future<void> _processNGOQrScan(String qrData) async {
+  //   // 1. Show a loading indicator while fetching
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB))),
+  //   );
+  //
+  //   try {
+  //     // 2. Query Firestore for the donation package with this QR Code
+  //     var query = await FirebaseFirestore.instance
+  //         .collectionGroup('donations')
+  //         .where('qrCodeData', isEqualTo: qrData)
+  //         .get();
+  //
+  //     if (query.docs.isEmpty) {
+  //       if (mounted) Navigator.pop(context); // Close loading
+  //       if (mounted) {
+  //         ScaffoldMessenger.of(context).showSnackBar(
+  //             const SnackBar(
+  //                 content: Text("Invalid QR Code. Donation package not found."),
+  //                 backgroundColor: Colors.redAccent
+  //             )
+  //         );
+  //       }
+  //       return;
+  //     }
+  //
+  //     var doc = query.docs.first;
+  //     var data = doc.data();
+  //     List<dynamic> milestones = List.from(data['milestones'] ?? []);
+  //     String todayDate = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
+  //
+  //     bool alreadyVerified = false;
+  //
+  //     // 3. Update the required milestones to TRUE
+  //     for (var m in milestones) {
+  //       if (m['label'] == 'Drop-off Verified' || m['label'] == 'Distributed') {
+  //         // Check if it's already been distributed to prevent duplicate actions
+  //         if (m['done'] == true && m['label'] == 'Distributed') {
+  //           alreadyVerified = true;
+  //         }
+  //         m['done'] = true;
+  //         m['date'] = todayDate;
+  //       }
+  //     }
+  //
+  //     if (mounted) Navigator.pop(context); // Close loading
+  //
+  //     if (alreadyVerified) {
+  //       if (mounted) {
+  //         ScaffoldMessenger.of(context).showSnackBar(
+  //             const SnackBar(
+  //                 content: Text("Action Denied: This donation has already been verified and distributed."),
+  //                 backgroundColor: Colors.orange
+  //             )
+  //         );
+  //       }
+  //       return;
+  //     }
+  //
+  //     // 4. Show Verification Dialog to the NGO Officer
+  //     _showNGOVerificationDialog(doc.reference, data, milestones);
+  //
+  //   } catch (e) {
+  //     if (mounted) Navigator.pop(context); // Close loading
+  //     if (mounted) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //           SnackBar(content: Text("Error processing QR: $e"), backgroundColor: Colors.redAccent)
+  //       );
+  //     }
+  //   }
+  // }
   Future<void> _processNGOQrScan(String qrData) async {
-    // 1. Show a loading indicator while fetching
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -5437,20 +5894,16 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
     );
 
     try {
-      // 2. Query Firestore for the donation package with this QR Code
       var query = await FirebaseFirestore.instance
           .collectionGroup('donations')
           .where('qrCodeData', isEqualTo: qrData)
           .get();
 
       if (query.docs.isEmpty) {
-        if (mounted) Navigator.pop(context); // Close loading
+        if (mounted) Navigator.pop(context);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text("Invalid QR Code. Donation package not found."),
-                  backgroundColor: Colors.redAccent
-              )
+              const SnackBar(content: Text("Invalid QR Code. Donation package not found."), backgroundColor: Colors.redAccent)
           );
         }
         return;
@@ -5459,47 +5912,165 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
       var doc = query.docs.first;
       var data = doc.data();
       List<dynamic> milestones = List.from(data['milestones'] ?? []);
-      String todayDate = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
 
-      bool alreadyVerified = false;
+      // --- NEW LOGIC: DETERMINE CURRENT STAGE ---
+      bool isReceived = false;
+      bool isDistributed = false;
 
-      // 3. Update the required milestones to TRUE
       for (var m in milestones) {
-        if (m['label'] == 'Drop-off Verified' || m['label'] == 'Distributed') {
-          // Check if it's already been distributed to prevent duplicate actions
-          if (m['done'] == true && m['label'] == 'Distributed') {
-            alreadyVerified = true;
-          }
-          m['done'] = true;
-          m['date'] = todayDate;
-        }
+        if (m['label'] == 'Drop-off Verified' && m['done'] == true) isReceived = true;
+        if (m['label'] == 'Distributed' && m['done'] == true) isDistributed = true;
       }
 
       if (mounted) Navigator.pop(context); // Close loading
 
-      if (alreadyVerified) {
+      if (isDistributed) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text("Action Denied: This donation has already been verified and distributed."),
-                  backgroundColor: Colors.orange
-              )
+              const SnackBar(content: Text("Action Denied: This donation has already been distributed."), backgroundColor: Colors.orange)
           );
         }
         return;
       }
 
-      // 4. Show Verification Dialog to the NGO Officer
-      _showNGOVerificationDialog(doc.reference, data, milestones);
+      // If not received yet, open RECIEVE dialog. If received, open DISTRIBUTE dialog.
+      if (!isReceived) {
+        _showNGOActionDialog(doc.reference, data, milestones, 'receive');
+      } else {
+        _showNGOActionDialog(doc.reference, data, milestones, 'distribute');
+      }
 
     } catch (e) {
-      if (mounted) Navigator.pop(context); // Close loading
+      if (mounted) Navigator.pop(context);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text("Error processing QR: $e"), backgroundColor: Colors.redAccent)
         );
       }
     }
+  }
+
+  void _showNGOActionDialog(DocumentReference docRef, Map<String, dynamic> data, List<dynamic> milestones, String action) {
+    bool isReceiving = action == 'receive';
+
+    // Dynamic Text & Colors based on Step
+    String title = isReceiving ? "Verify Hub Drop-off" : "Log Final Distribution";
+    String itemText = data['itemName'] ?? "Donation Package";
+    String descText = isReceiving
+        ? "Confirm that this item has been successfully received at the NGO Hub and logged into inventory."
+        : "Confirm that this item is now being handed over to the beneficiaries in the target zone.";
+    String btnText = isReceiving ? "Confirm Receipt at Hub" : "Distribute to Victims";
+    IconData icon = isReceiving ? LucideIcons.box : LucideIcons.users;
+    Color themeCol = isReceiving ? const Color(0xFF2563EB) : kEmerald; // Blue for receive, Green for distribute
+
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          bool isProcessing = false;
+
+          return StatefulBuilder(
+              builder: (context, setState) {
+                return Dialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    backgroundColor: Colors.white,
+                    child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(color: themeCol.withOpacity(0.1), shape: BoxShape.circle),
+                                child: Icon(icon, color: themeCol, size: 40),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(title, style: GoogleFonts.inter(fontWeight: FontWeight.w900, fontSize: 22, color: const Color(0xFF1E293B))),
+                              const SizedBox(height: 8),
+
+                              Text(itemText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeCol)),
+                              Text("Target: ${data['target']}", style: const TextStyle(color: Colors.grey)),
+
+                              const Divider(height: 32),
+                              Text(
+                                  descText,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, height: 1.5)
+                              ),
+                              const SizedBox(height: 24),
+
+                              SizedBox(
+                                  width: double.infinity,
+                                  height: 50,
+                                  child: ElevatedButton.icon(
+                                      icon: const Icon(LucideIcons.checkCircle),
+                                      label: Text(btnText, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                      style: ElevatedButton.styleFrom(
+                                          backgroundColor: themeCol,
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                                      ),
+                                      onPressed: isProcessing ? null : () async {
+                                        setState(() => isProcessing = true);
+
+                                        try {
+                                          String todayDate = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
+
+                                          // Update only the relevant milestone based on the action
+                                          for (var m in milestones) {
+                                            if (isReceiving && m['label'] == 'Drop-off Verified') {
+                                              m['done'] = true;
+                                              m['date'] = todayDate;
+                                            }
+                                            if (!isReceiving && m['label'] == 'Distributed') {
+                                              m['done'] = true;
+                                              m['date'] = todayDate;
+                                            }
+                                          }
+
+                                          // Status changes to Inventory, then to Distributed
+                                          String newStatus = isReceiving ? "Inventory at Hub" : "Distributed";
+
+                                          await docRef.update({
+                                            'milestones': milestones,
+                                            'status': newStatus,
+                                          });
+
+                                          // ONLY give the Donor points when it reaches the victims!
+                                          if (!isReceiving) {
+                                            await creditImpactIfMilestonesComplete(docRef);
+                                          }
+
+                                          if (context.mounted) {
+                                            Navigator.pop(context);
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(isReceiving ? "Item logged into inventory!" : "Success! Item distributed to beneficiaries."),
+                                                  backgroundColor: themeCol,
+                                                  behavior: SnackBarBehavior.floating,
+                                                )
+                                            );
+                                          }
+                                        } catch (e) {
+                                          setState(() => isProcessing = false);
+                                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.redAccent));
+                                        }
+                                      }
+                                  )
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                  onPressed: isProcessing ? null : () => Navigator.pop(context),
+                                  child: const Text("Cancel", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))
+                              )
+                            ]
+                        )
+                    )
+                );
+              }
+          );
+        }
+    );
   }
 
   // --- NEW: NGO CONFIRMATION DIALOG ---
@@ -5841,20 +6412,125 @@ class SectionTitle extends StatelessWidget {
 // }
 
 // ==========================================
-// GLOBAL CACHE (Above the class)
+// GLOBAL AI SYNC ENGINE
 // ==========================================
-List<dynamic> _cachedAiNeeds = [];
-DateTime? _lastFetchTime;
-String _globalLastUpdated = "Never";
-DateTime? _lastSuccessfulFetch;
+bool _isGlobalSyncing = false;
+
+Future<void> ensureReliefDataIsSynced({bool forceRefresh = false}) async {
+  if (_isGlobalSyncing) return;
+  _isGlobalSyncing = true;
+
+  try {
+    final snapshot = await FirebaseFirestore.instance.collection('relief_cache').doc('current_status').get();
+    List<dynamic> oldResults = [];
+
+    if (snapshot.exists) {
+      final data = snapshot.data()!;
+      final Timestamp? timestamp = data['timestamp'] as Timestamp?;
+
+      // If not forced, check if data is fresh (< 30 minutes old)
+      if (!forceRefresh && timestamp != null) {
+        final DateTime lastFetch = timestamp.toDate();
+        if (DateTime.now().difference(lastFetch).inMinutes < 30) {
+          _isGlobalSyncing = false;
+          return; // It's fresh! Stop here.
+        }
+      }
+      oldResults = data['results'] ?? [];
+    }
+
+    // --- RUN AI GENERATION ---
+    final apiKey = dotenv.env['GEMINI_KEY'];
+    if (apiKey == null) {
+      _isGlobalSyncing = false;
+      return;
+    }
+    final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey);
+
+    final prompt = "Search active disaster situations in Malaysia (Last 48h). Categories: Flood Relief, Food Security, Medical Aid. Return strictly RAW JSON LIST ONLY. Provide exactly 3 specific items for each category in needed_items. Format: [{\"location\": \"string\", \"category\": \"string\", \"description\": \"string\", \"score\": 90, \"lat\": 4.0, \"lng\": 101.0, \"severities\": {\"edu\": \"Medium/High/Critical\", \"cloth\": \"Medium/High/Critical\", \"food\": \"Medium/High/Critical\", \"med\": \"Medium/High/Critical\", \"rel\": \"Medium/High/Critical\"}, \"needed_items\": {\"edu\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"cloth\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"food\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"med\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"rel\": [\"Item 1\", \"Item 2\", \"Item 3\"]}}]";
+
+    final response = await model.generateContent([Content.text(prompt)]);
+    String rawJson = response.text ?? "[]";
+
+    // Clean JSON string
+    rawJson = rawJson.replaceAll('```json', '').replaceAll('```', '').trim();
+    int start = rawJson.indexOf('[');
+    int end = rawJson.lastIndexOf(']');
+    if (start != -1 && end != -1) rawJson = rawJson.substring(start, end + 1);
+
+    final List<dynamic> newAiResults = jsonDecode(rawJson);
+
+    // --- SMART MERGE LOGIC ---
+    List<dynamic> mergedResults = [];
+
+    // Step A: Rescue all Manually Added Locations
+    for (var oldZone in oldResults) {
+      bool isManual = oldZone['isManual'] == true || (oldZone['description']?.toString().contains("NGO REPORT:") ?? false);
+      if (isManual) {
+        mergedResults.add(oldZone);
+      }
+    }
+
+    // Step B: Process New AI Locations & Rescue Items
+    for (var aiZone in newAiResults) {
+      String aiLoc = aiZone['location'] ?? "";
+      int existingIndex = mergedResults.indexWhere((z) => z['location'] == aiLoc);
+
+      if (existingIndex != -1) {
+        _globalMergeItems(mergedResults[existingIndex], aiZone);
+      } else {
+        var oldAiZone = oldResults.firstWhere((z) => z['location'] == aiLoc, orElse: () => null);
+        if (oldAiZone != null) {
+          _globalMergeItems(aiZone, oldAiZone as Map<String, dynamic>);
+        }
+        mergedResults.add(aiZone);
+      }
+    }
+
+    // --- SAVE TO FIRESTORE ---
+    await FirebaseFirestore.instance.collection('relief_cache').doc('current_status').set({
+      'results': mergedResults,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+  } catch (e) {
+    debugPrint("Global AI Sync Error: $e");
+  } finally {
+    _isGlobalSyncing = false;
+  }
+}
+
+// Global Helper
+void _globalMergeItems(Map<String, dynamic> target, Map<String, dynamic> source) {
+  Map<String, dynamic> targetItems = Map<String, dynamic>.from(target['needed_items'] ?? {});
+  Map<String, dynamic> sourceItems = Map<String, dynamic>.from(source['needed_items'] ?? {});
+
+  sourceItems.forEach((key, sourceList) {
+    if (sourceList is List) {
+      List<dynamic> tList = List.from(targetItems[key] ?? []);
+      for (var item in sourceList) {
+        String itemStr = item.toString().trim();
+        if (itemStr != "Blanket") {
+          bool exists = tList.any((t) => t.toString().trim().toLowerCase() == itemStr.toLowerCase());
+          if (!exists) {
+            tList.add(itemStr);
+          }
+        }
+      }
+      targetItems[key] = tList;
+    }
+  });
+  target['needed_items'] = targetItems;
+}
 
 class ReliefMap extends StatefulWidget {
   final VoidCallback? onTopUp;
+  final String userRole; // <--- 1. ADD THIS
 
-  const ReliefMap({super.key, this.onTopUp});
+  const ReliefMap({super.key, this.onTopUp, this.userRole = 'donor'}); // <--- 2. UPDATE THIS
   @override
   State<ReliefMap> createState() => _ReliefMapState();
-  }
+}
 
 class _ReliefMapState extends State<ReliefMap> {
   String _selectedFilter = "All";
@@ -5971,48 +6647,24 @@ class _ReliefMapState extends State<ReliefMap> {
   }
 
   // --- THE CORE LOGIC: SYNC BETWEEN FIRESTORE CACHE AND AI ---
-  Future<void> _syncReliefData() async {
+  Future<void> _syncReliefData({bool forceRefresh = false}) async {
     setState(() => isLoading = true);
 
-    try {
-      // 1. GET DATA FROM FIRESTORE
-      final snapshot = await FirebaseFirestore.instance
-          .collection('relief_cache')
-          .doc('current_status')
-          .get();
+    // 1. Call the Global Engine (It handles AI fetching, merging, and Firestore saving automatically)
+    await ensureReliefDataIsSynced(forceRefresh: forceRefresh);
 
+    // 2. Fetch the newly synced data from Firestore to display on the local map UI
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection('relief_cache').doc('current_status').get();
       if (snapshot.exists) {
         final data = snapshot.data()!;
-        final Timestamp timestamp = data['timestamp'];
-        final DateTime lastFetch = timestamp.toDate();
-        final List<dynamic> cachedResults = data['results'];
-
-        // If data is fresh (less than 30 mins old), use it and STOP.
-        if (DateTime.now().difference(lastFetch).inMinutes < 30) {
-          debugPrint("Using fresh Firestore Cache.");
-          _updateUI(cachedResults, lastFetch);
-          return;
-        }
-
-        // 2. CACHE IS OLD - TRY TO REFRESH WITH AI
-        debugPrint("Cache old. Attempting AI Refresh...");
-        bool success = await _fetchNewDataFromAI();
-
-        // 3. FALLBACK: If AI fails (Quota), show the old data anyway!
-        if (!success) {
-          debugPrint("AI failed. Falling back to stale Firestore data.");
-          _updateUI(cachedResults, lastFetch);
-          // Optional: Show a toast saying "Showing older data due to server limit"
-        }
-      } else {
-        // No cache exists at all
-        await _fetchNewDataFromAI();
+        final Timestamp timestamp = data['timestamp'] ?? Timestamp.now();
+        _updateUI(data['results'] ?? [], timestamp.toDate());
       }
-
     } catch (e) {
-      debugPrint("Sync Error: $e");
+      debugPrint("Error loading map data: $e");
     } finally {
-      if(mounted) setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -6215,7 +6867,7 @@ class _ReliefMapState extends State<ReliefMap> {
                       ),
                       // The Refresh Button stays on the right
                       IconButton(
-                          onPressed: _syncReliefData,
+                          onPressed: () => _syncReliefData(forceRefresh: true), // <-- Fix is here
                           icon: const Icon(LucideIcons.refreshCw, size: 20, color: kSlate400)
                       )
                     ],
@@ -6240,7 +6892,7 @@ class _ReliefMapState extends State<ReliefMap> {
                 key: ValueKey('sf_map_$_selectedFilter'),
                 layers: [
                   MapTileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    urlTemplate: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
                     initialMarkersCount: filteredNeeds.length,
                     zoomPanBehavior: _zoomPanBehavior,
                     markerBuilder: (context, index) {
@@ -6496,33 +7148,30 @@ class _ReliefMapState extends State<ReliefMap> {
           Text(item['description'] ?? "",
               style: const TextStyle(color: kSlate500, fontSize: 12)
           ),
-          const SizedBox(height: 16),
-
-          // --- FIXED BUTTON: WRAPS TEXT AND CENTERED ---
-          // --- FIXED BUTTON: FULL WIDTH BUT COMPACT HEIGHT ---
-          SizedBox(
-            width: double.infinity, // Spans the entire width of the card
-            child: ElevatedButton.icon(
-              onPressed: () => _showContributeDialog(context, item),
-              icon: const Icon(LucideIcons.arrowUpRight, size: 16),
-              label: const Text(
-                "Contribute Now",
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kEmerald,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                // Adjust vertical padding to make the box "thinner"
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                // Remove the default minimum height (usually 48)
-                minimumSize: const Size(double.infinity, 32),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          if (widget.userRole == 'donor') ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity, // Spans the entire width of the card
+              child: ElevatedButton.icon(
+                onPressed: () => _showContributeDialog(context, item),
+                icon: const Icon(LucideIcons.arrowUpRight, size: 16),
+                label: const Text(
+                  "Contribute Now",
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kEmerald,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  minimumSize: const Size(double.infinity, 32),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
-            ),
-          )
+            )
+          ]
           // ------------------------------------------
         ],
       ),
@@ -6773,19 +7422,23 @@ class _ReliefMapState extends State<ReliefMap> {
                                   'id': "KC-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}",
                                   'target': item['location'] ?? "Relief Project",
                                   'category': item['category'] ?? "Relief Aid",
-                                  'status': "Funds Distributed",
+                                  'status': "Processing", // Changed to Processing initially
                                   'type': 'money',
                                   'amount': donateAmount,
                                   'imageUrl': imageToSave,
-                                  'isCredited': false, // <--- ADD THIS FLAG
+                                  'isCredited': false,
                                   'milestones': [
                                     {'label': 'Payment Verified', 'date': todayDate, 'done': true},
-                                    {'label': 'NGO Verified', 'date': todayDate, 'done': true}
+                                    {'label': 'NGO Verified', 'date': todayDate, 'done': true},
+
+                                    // ---> CHANGED TO FALSE HERE <---
+                                    {'label': 'Distributed', 'date': '', 'done': false}
                                   ],
                                   'timestamp': FieldValue.serverTimestamp(),
                                 });
 
-                                await creditImpactIfMilestonesComplete(newDonationRef);
+                                // Removed the instant point-crediting so they get points later
+
                                 if (context.mounted) {
                                   setDialogState(() {
                                     isPaying = false;
@@ -8826,15 +9479,6 @@ class NotificationBell extends StatefulWidget {
 class _NotificationBellState extends State<NotificationBell> {
   int _seenCount = 0;
 
-  // Helper to safely parse dates whether they are Firestore Timestamps, Strings, or missing
-  DateTime _parseDateTime(dynamic ts) {
-    if (ts == null) return DateTime.now();
-    if (ts is Timestamp) return ts.toDate();
-    if (ts is String) return DateTime.tryParse(ts) ?? DateTime.now();
-    if (ts is int) return DateTime.fromMillisecondsSinceEpoch(ts);
-    return DateTime.now();
-  }
-
   @override
   Widget build(BuildContext context) {
     final String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
@@ -8845,10 +9489,23 @@ class _NotificationBellState extends State<NotificationBell> {
           .collection('users')
           .doc(uid)
           .collection('donations')
-          .orderBy('timestamp', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
         List<Map<String, dynamic>> notifications = [];
+
+        // ==========================================
+        // 1. FIX: CACHE 'NOW' ONCE PER BUILD
+        // Prevents the microsecond inversion bug in loops
+        // ==========================================
+        final DateTime currentBuildTime = DateTime.now();
+
+        DateTime parseDocTime(dynamic ts) {
+          if (ts == null) return currentBuildTime;
+          if (ts is Timestamp) return ts.toDate();
+          if (ts is String) return DateTime.tryParse(ts) ?? currentBuildTime;
+          if (ts is int) return DateTime.fromMillisecondsSinceEpoch(ts);
+          return currentBuildTime;
+        }
 
         if (snapshot.hasData) {
           for (var doc in snapshot.data!.docs) {
@@ -8861,29 +9518,31 @@ class _NotificationBellState extends State<NotificationBell> {
             final String target = data['target'] ?? "Unknown Hub";
             final String method = data['deliveryMethod'] ?? "self";
 
-            // Safely parse the document's main timestamp
-            final DateTime docDateTime = _parseDateTime(data['timestamp']);
+            final DateTime docDateTime = parseDocTime(data['timestamp']);
 
-            // Loop through milestones (Starts at 1 to skip the initial 'Pledge' step)
-            for (int i = 1; i < milestones.length; i++) {
+            for (int i = 0; i < milestones.length; i++) {
               final m = milestones[i] as Map<String, dynamic>;
 
               if (m['done'] == true) {
-
-                // ==========================================
-                // THE FIX: Properly Parse the Formatted Date String
-                // ==========================================
-                DateTime milestoneDateTime = docDateTime; // Default to document creation time
+                DateTime milestoneDateTime = docDateTime;
 
                 if (m['date'] != null) {
-                  String dateStr = m['date'].toString();
-                  if (dateStr != 'Today' && dateStr != 'Pending' && dateStr.isNotEmpty) {
+                  String dateStr = m['date'].toString().trim();
+
+                  if (dateStr.toLowerCase() != 'today' && dateStr.toLowerCase() != 'pending' && dateStr.isNotEmpty) {
                     try {
-                      // We decode the specific pattern you used: "24 Feb 2026, 3:07 PM"
+                      // Clean up formatting
+                      dateStr = dateStr
+                          .replaceAll(RegExp(r'(?i)a\.?m\.?'), 'AM')
+                          .replaceAll(RegExp(r'(?i)p\.?m\.?'), 'PM');
+
                       milestoneDateTime = DateFormat('dd MMM yyyy, h:mm a').parse(dateStr);
                     } catch (e) {
-                      milestoneDateTime = docDateTime; // Fallback if parsing fails
+                      // Use the cached time so all failed parses tie perfectly
+                      milestoneDateTime = currentBuildTime;
                     }
+                  } else if (dateStr.toLowerCase() == 'today') {
+                    milestoneDateTime = currentBuildTime;
                   }
                 }
 
@@ -8906,7 +9565,8 @@ class _NotificationBellState extends State<NotificationBell> {
                   'body': bodyText,
                   'icon': iconData,
                   'color': i == milestones.length - 1 ? Colors.green : Colors.blue,
-                  'timestamp': milestoneDateTime, // <-- Passes the accurate parsed time
+                  'timestamp': milestoneDateTime,
+                  'docTimestamp': docDateTime, // Saved for tie-breaking
                   'milestoneIndex': i,
                 });
               }
@@ -8914,23 +9574,28 @@ class _NotificationBellState extends State<NotificationBell> {
           }
         }
 
-        // Bulletproof sorting with a Tie-Breaker
+        // ==========================================
+        // 2. FIX: ROCK-SOLID 3-STEP SORTING
+        // ==========================================
         notifications.sort((a, b) {
-          final DateTime timeA = a['timestamp'] as DateTime? ?? DateTime.now();
-          final DateTime timeB = b['timestamp'] as DateTime? ?? DateTime.now();
+          final DateTime timeA = a['timestamp'] as DateTime;
+          final DateTime timeB = b['timestamp'] as DateTime;
 
-          // 1. Sort by time (Newest first)
+          // STEP 1: Sort by the Milestone's Timestamp (Newest first)
           int timeComparison = timeB.compareTo(timeA);
+          if (timeComparison != 0) return timeComparison;
 
-          if (timeComparison != 0) {
-            return timeComparison;
-          } else {
-            // 2. TIE-BREAKER: If timestamps are exactly the same,
-            // sort by milestone index (Higher index = later step = put on top!)
-            final int indexA = a['milestoneIndex'] as int? ?? 0;
-            final int indexB = b['milestoneIndex'] as int? ?? 0;
-            return indexB.compareTo(indexA);
-          }
+          // STEP 2: If timestamps match (e.g. they both defaulted to currentBuildTime),
+          // sort by Document Creation Time (Newer donations first)
+          final DateTime docA = a['docTimestamp'] as DateTime;
+          final DateTime docB = b['docTimestamp'] as DateTime;
+          int docComparison = docB.compareTo(docA);
+          if (docComparison != 0) return docComparison;
+
+          // STEP 3: If it's the exact same donation, sort by Milestone Step (Highest step first)
+          final int idxA = a['milestoneIndex'] as int;
+          final int idxB = b['milestoneIndex'] as int;
+          return idxB.compareTo(idxA);
         });
 
         int currentCount = notifications.length;
@@ -9111,7 +9776,6 @@ class _NotificationBellState extends State<NotificationBell> {
     }
   }
 }
-
 //
 // // ==========================================
 // // 5. AI ADVISOR PAGE (WEB STYLE MATCH)
@@ -11623,5 +12287,266 @@ Future<void> creditImpactIfMilestonesComplete(DocumentReference donationRef) asy
     }
   } catch (e) {
     debugPrint("Error crediting impact: $e");
+  }
+}
+
+// ==========================================
+// NEW TAB: LOGISTICS DASHBOARD (FULL PAGE)
+// ==========================================
+// ==========================================
+// NEW TAB: LOGISTICS DASHBOARD (FULL PAGE)
+// ==========================================
+class LogisticsDashboard extends StatelessWidget {
+  const LogisticsDashboard({super.key});
+
+  // 1. THE LOGIC: CALCULATING REAL DATA FROM FIRESTORE
+  Future<Map<String, dynamic>> _fetchRealLogisticsData() async {
+    var snapshot = await FirebaseFirestore.instance.collectionGroup('donations').get();
+
+    if (snapshot.docs.isEmpty) {
+      return {
+        "score": 100.0,
+        "active": 0,
+        "avg": 0.0,
+        "bars": <double>[0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+      };
+    }
+
+    int totalItems = 0;
+    int activeDrops = 0;
+
+    // --- NEW VARIABLES FOR SCORE ---
+    int completedDeliveries = 0;
+    int deliveriesWithPhoto = 0;
+
+    double totalDays = 0;
+    int completedCount = 0;
+
+    List<int> dailyCounts = List.filled(7, 0);
+    DateTime now = DateTime.now();
+    DateTime startOfToday = DateTime(now.year, now.month, now.day);
+
+    for (var doc in snapshot.docs) {
+      var d = doc.data() as Map<String, dynamic>;
+
+      if (d['type'] == 'item') {
+        totalItems++;
+
+        // --- 1. UPDATED TRANSPARENCY SCORE LOGIC ---
+        // Only evaluate transparency if the item has arrived at the NGO/Distributed
+        if (d['status'] == 'Drop-off Verified' || d['status'] == 'Inventory at Hub' || d['status'] == 'Distributed') {
+          completedDeliveries++;
+
+          // Check specifically if the courier took the time to upload a photo
+          if (d.containsKey('proofOfDeliveryUrl') && d['proofOfDeliveryUrl'] != null) {
+            deliveriesWithPhoto++;
+          }
+        }
+
+        // --- 2. ACTIVE DROPS ---
+        if (d['status'] != 'Distributed') {
+          activeDrops++;
+        }
+
+        // --- 3. CHART DATA (Past 7 Days Volume) ---
+        if (d['timestamp'] != null) {
+          DateTime pledgeDate = (d['timestamp'] as Timestamp).toDate();
+          DateTime startOfPledgeDate = DateTime(pledgeDate.year, pledgeDate.month, pledgeDate.day);
+
+          int daysAgo = startOfToday.difference(startOfPledgeDate).inDays;
+
+          // If it happened within the last 7 days (0 = today, 6 = 6 days ago)
+          if (daysAgo >= 0 && daysAgo < 7) {
+            // Reverse the index so the oldest day is on the left (index 0) and today is on the right (index 6)
+            dailyCounts[6 - daysAgo]++;
+          }
+
+          // --- 4. AVERAGE DISPATCH TIME ---
+          if (d['status'] == 'Distributed') {
+            DateTime? distributedDate;
+            List<dynamic> milestones = d['milestones'] ?? [];
+
+            // Find the exact date it was marked as Distributed
+            for (var m in milestones) {
+              if (m['label'] == 'Distributed' && m['done'] == true && m['date'] != null) {
+                try {
+                  distributedDate = DateFormat('dd MMM yyyy, h:mm a').parse(m['date'].toString());
+                } catch (e) {
+                  distributedDate = DateTime.now(); // Fallback if parsing fails
+                }
+              }
+            }
+
+            if (distributedDate != null) {
+              double daysTaken = distributedDate.difference(pledgeDate).inHours / 24.0;
+              // Prevent negative times if dates are weird
+              if (daysTaken >= 0) {
+                totalDays += daysTaken;
+                completedCount++;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // --- 5. NORMALIZE CHART BARS FOR UI ---
+    // The UI chart expects values between 0.1 and 1.0
+    int maxCount = 0;
+    for (int count in dailyCounts) {
+      if (count > maxCount) maxCount = count;
+    }
+
+    List<double> normalizedBars = [];
+    for (int count in dailyCounts) {
+      if (maxCount == 0) {
+        normalizedBars.add(0.1); // Minimum bar height if no data
+      } else {
+        double val = count / maxCount;
+        normalizedBars.add(val < 0.1 ? 0.1 : val); // Ensure bar is at least a bit visible
+      }
+    }
+
+    double finalScore = 100.0; // Default
+    if (completedDeliveries > 0) {
+      // e.g. 8 photos out of 10 deliveries = 80% Transparency
+      finalScore = (deliveriesWithPhoto / completedDeliveries) * 100.0;
+    } else if (totalItems > 0 && completedDeliveries == 0) {
+      finalScore = 0.0; // Deliveries are happening, but none finished yet
+    }
+
+    return {
+      "score": finalScore,
+      "active": activeDrops,
+      "avg": completedCount > 0 ? (totalDays / completedCount) : 0.0,
+      "bars": normalizedBars
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFFF8FAFC), // Light grey background to match the app
+      child: FutureBuilder<Map<String, dynamic>>(
+        future: _fetchRealLogisticsData(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator(color: kBlue));
+          }
+          final data = snapshot.data!;
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Text(
+                    "Mission Operational Data",
+                    style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w900, color: kSlate800)
+                ),
+                const Text(
+                    "Tracking logistics speed, fund health, and physical inventory.",
+                    style: TextStyle(color: kSlate500, fontSize: 14)
+                ),
+                const SizedBox(height: 32),
+
+                // Cards Layout (Responsive Wrap)
+                Wrap(
+                  spacing: 24,
+                  runSpacing: 24,
+                  children: [
+                    // Left Column: Chart Card
+                    SizedBox(
+                      width: MediaQuery.of(context).size.width > 800 ? MediaQuery.of(context).size.width * 0.55 : double.infinity,
+                      child: _analyticCard(
+                        "LORRY DISPATCH RATE (LAST 7 DAYS)",
+                        Column(children: [
+                          _buildMiniChart(data['bars'] as List<double>),
+                          const SizedBox(height: 16),
+                          Text(
+                              data['avg'] == 0.0
+                                  ? "No completed deliveries yet"
+                                  : "Avg. delivery: ${data['avg'].toStringAsFixed(1)} Days",
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: kBlue)
+                          )
+                        ]),
+                      ),
+                    ),
+
+                    // Right Column: Active Drops & Score Cards
+                    SizedBox(
+                      width: MediaQuery.of(context).size.width > 800 ? MediaQuery.of(context).size.width * 0.35 : double.infinity,
+                      child: Column(
+                        children: [
+                          _analyticCard(
+                            "INCOMING PHYSICAL GOODS",
+                            Column(children: [
+                              const Icon(LucideIcons.truck, color: kBlue, size: 32),
+                              const SizedBox(height: 12),
+                              Text("${data['active']} Active Drops",
+                                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: kSlate800)),
+                            ]),
+                          ),
+                          const SizedBox(height: 24),
+                          _analyticCard(
+                            "TRANSPARENCY SCORE",
+                            Center(
+                              child: Column(children: [
+                                Text("${data['score'].toStringAsFixed(1)}%",
+                                    style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w900, color: kBlue)),
+                              ]),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // UI Helper for Logistics Cards
+  Widget _analyticCard(String title, Widget child) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
+        ],
+      ),
+      child: Column(
+        children: [
+          Text(title, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: kSlate400, letterSpacing: 1.1)),
+          const SizedBox(height: 20),
+          child
+        ],
+      ),
+    );
+  }
+
+  // UI Helper for Logistics Chart
+  Widget _buildMiniChart(List<double> bars) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: bars.map((v) => Container(
+        width: 25,
+        height: 120 * v, // Scales dynamically based on the max value of the week
+        decoration: BoxDecoration(
+          color: kBlue.withOpacity(v == 1.0 ? 0.5 : 0.2), // The highest day will be darker blue
+          borderRadius: BorderRadius.circular(4),
+        ),
+      )).toList(),
+    );
   }
 }
