@@ -63,6 +63,7 @@ class KitaCareApp extends StatelessWidget {
         textTheme: GoogleFonts.interTextTheme(),
         useMaterial3: true,
       ),
+      home: const AuthWrapper(),
     );
   }
 }
