@@ -1,22 +1,3 @@
-<<<<<<< HEAD
-# KitaCare AI — Dart analysis configuration
-# These rules are linting SUGGESTIONS, not errors. The app will still compile and run.
-
-include: package:flutter_lints/flutter.yaml
-
-linter:
-  rules:
-    # These are style suggestions — not errors. Safe to keep off while building.
-    prefer_const_constructors: false
-    prefer_const_literals_to_create_immutables: false
-
-analyzer:
-  errors:
-    # Downgrade deprecation warnings to INFO level (yellow, not red)
-    deprecated_member_use: info
-    # Downgrade missing const to INFO  
-    prefer_const_constructors: info
-=======
 # This file configures the analyzer, which statically analyzes Dart code to
 # check for errors, warnings, and lints.
 #
@@ -45,4 +26,3 @@ linter:
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
->>>>>>> origin/main
