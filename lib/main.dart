@@ -7926,41 +7926,93 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
     _scrollToBottom();
 
     try {
-      final apiKey = dotenv.env['GEMINI_ADVISOR_KEY'];
-      if (apiKey == null) throw "API Key not found";
-      print("Debug: $apiKey");
+      // 1. Check API Key
+      final apiKey = dotenv.env['GEMINI_ADVISOR_KEY'] ?? dotenv.env['GEMINI_KEY']; // Fallback to main key if advisor key is missing
+      if (apiKey == null || apiKey.isEmpty) throw "API Key not found in .env file";
 
       final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey);
 
-      // Context changes based on Role
-      final prompt = widget.role == 'ngo'
-          ? """You are KitaCare NGO Support AI. Assist NGOs in Malaysia with disaster relief logistics, verifying donor QR codes, inventory management, and field report generation. Keep responses professional, helpful, and concise. User: $text"""
-          : """You are KitaCare AI, an expert humanitarian advisor for a Malaysian disaster relief app. Assist individual donors with finding verified NGOs, wallet donations, and map tracking. Keep responses professional, helpful, and concise. User: $text""";
+      // ==========================================
+      // 2. FETCH LIVE SYSTEM DATA FROM FIREBASE
+      // ==========================================
+      String liveContext = "Current Active Disaster Zones & Needs:\n";
+      try {
+        final cacheSnap = await FirebaseFirestore.instance.collection('relief_cache').doc('current_status').get();
+        if (cacheSnap.exists && cacheSnap.data() != null) {
+          List<dynamic> results = cacheSnap.data()!['results'] ?? [];
 
+          if (results.isEmpty) {
+            liveContext += "No active disaster zones currently.";
+          } else {
+            for (var zone in results) {
+              String loc = zone['location'] ?? "Unknown";
+              String cat = zone['category'] ?? "General";
+              int score = (zone['score'] as num?)?.toInt() ?? 50;
+
+              // Extract specific items requested
+              List<String> neededItemsList = [];
+              Map<String, dynamic> itemsMap = zone['needed_items'] ?? {};
+              itemsMap.forEach((key, value) {
+                if (value is List) {
+                  for (var item in value) {
+                    if (item.toString() != "Blanket") { // Ignore the generic placeholder
+                      neededItemsList.add(item.toString());
+                    }
+                  }
+                }
+              });
+
+              String needsStr = neededItemsList.isEmpty ? "General supplies" : neededItemsList.join(", ");
+              liveContext += "- $loc ($cat, Urgency: $score/100). Needs: $needsStr\n";
+            }
+          }
+        }
+      } catch (e) {
+        liveContext += "(Real-time data currently syncing...)";
+        debugPrint("Error fetching live context for AI: $e");
+      }
+
+      // ==========================================
+      // 3. CONSTRUCT DYNAMIC PROMPT FOR GEMINI
+      // ==========================================
+      String systemRole = widget.role == 'ngo'
+          ? "You are KitaCare NGO Support AI. Assist NGOs in Malaysia with disaster relief logistics, field reports, and prioritizing deployments. Base your advice heavily on the LIVE SYSTEM CONTEXT provided. Keep responses professional, highly actionable, and concise."
+          : "You are KitaCare AI, an expert humanitarian advisor for a Malaysian disaster relief app. Assist donors with finding where their help is most needed. Base your recommendations heavily on the LIVE SYSTEM CONTEXT provided. Keep responses professional, empathetic, and concise.";
+
+      final prompt = """
+      $systemRole
+
+      LIVE SYSTEM CONTEXT:
+      $liveContext
+
+      USER QUESTION:
+      $text
+      """;
+
+      // 4. Get Response from Gemini
       final response = await model.generateContent([Content.text(prompt)]);
 
       setState(() {
         _messages.add({
           "role": "ai",
+          // Remove markdown bolding (*) to keep text clean
           "text": response.text?.replaceAll('*', '') ?? "I apologize, I couldn't process that request."
         });
         _isLoading = false;
       });
       _scrollToBottom();
-    } catch (e) {
-      // 1. THIS WILL PRINT THE EXACT REASON IN YOUR TERMINAL
-      debugPrint("GEMINI ADVISOR ERROR: $e");
 
+    } catch (e) {
+      debugPrint("GEMINI ADVISOR ERROR: $e");
       setState(() {
-        // 2. TEMPORARILY SHOW THE REAL ERROR IN THE CHAT UI FOR EASY DEBUGGING
         _messages.add({
           "role": "ai",
-          "text": "Error details: $e"
+          "text": "Sorry, I encountered an error connecting to my knowledge base. Please check your internet or API key."
         });
         _isLoading = false;
       });
     }
-    }
+  }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
