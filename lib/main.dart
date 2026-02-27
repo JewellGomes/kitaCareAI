@@ -4,29 +4,19 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'dart:convert'; // For parsing AI JSON
+import 'dart:convert';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-// Ensure you have run 'dart pub global run flutterfire_cli:flutterfire configure'
 import 'firebase_options.dart';
 import 'package:syncfusion_flutter_maps/maps.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'dart:io';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw; // Use 'pw' prefix to avoid conflict with Flutter's widgets
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart'; // Add this
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart'; // Use open_filex
-import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
 import 'package:xml/xml.dart';
 
@@ -476,15 +466,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
           ),
         ),
       ],
-    );
-  }
-
-  // UI Helpers
-  Widget _buildTextField(String hint, IconData icon, TextEditingController ctrl, {bool obscure = false}) {
-    return TextField(
-      controller: ctrl,
-      obscureText: obscure,
-      decoration: InputDecoration(hintText: hint, prefixIcon: Icon(icon, size: 18), filled: true, fillColor: const Color(0xFFF8FAFC), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)),
     );
   }
 
@@ -1868,9 +1849,6 @@ class _NGODashboardState extends State<NGODashboard> {
         : NGOSecureConsole(onVerified: _onPinVerified);
   }
 }
-// ==========================================
-// NEW: COURIER LOGISTICS DASHBOARD
-// ==========================================
 // ==========================================
 // NEW: COURIER LOGISTICS DASHBOARD
 // ==========================================
@@ -4532,59 +4510,6 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
       },
     );
   }
-  // ==========================================
-  // TAB 2: PHYSICAL GOODS REQUESTS & AI
-  // ==========================================
-
-  Widget _buildPhysicalGoodsUI() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text("Broadcast New Field Request", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-        const SizedBox(height: 8),
-        const Text("Publish needs directly to the Donor Map.", style: TextStyle(color: Colors.grey)),
-        const SizedBox(height: 24),
-
-        SizedBox(
-          width: 250,
-          child: ElevatedButton.icon(
-            onPressed: () => _showAddNeedDialog(isPhysical: true),
-            icon: const Icon(LucideIcons.plusCircle, size: 18),
-            label: const Text("Create Item Request"),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2563EB),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-            ),
-          ),
-        )
-      ],
-    );
-  }
-
-  Widget _buildAIStrategyCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: const Color(0xFF2563EB).withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFF2563EB).withOpacity(0.1))),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text("AI Operations Strategy", style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF2563EB), fontSize: 12, letterSpacing: 0.5)),
-              GestureDetector(onTap: _generateMissionStrategy, child: const Icon(LucideIcons.refreshCw, size: 16, color: Color(0xFF2563EB)))
-            ],
-          ),
-          const SizedBox(height: 12),
-          _isAnalyzing
-              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Color(0xFF2563EB), strokeWidth: 2))
-              : Text(_aiStrategy, style: const TextStyle(fontSize: 14, color: Color(0xFF1E293B), fontWeight: FontWeight.w600, height: 1.5)),
-        ],
-      ),
-    );
-  }
 
   // ==========================================
   // BACKEND LOGIC ACTIONS
@@ -4785,171 +4710,6 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
               }
           );
         }
-    );
-  }
-
-  // --- NEW: NGO CONFIRMATION DIALOG ---
-  void _showNGOVerificationDialog(DocumentReference docRef, Map<String, dynamic> data, List<dynamic> updatedMilestones) {
-    showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) {
-          bool isProcessing = false;
-
-          return StatefulBuilder(
-              builder: (context, setState) {
-                return Dialog(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                    backgroundColor: Colors.white,
-                    child: Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(color: const Color(0xFF2563EB).withOpacity(0.1), shape: BoxShape.circle),
-                                child: const Icon(LucideIcons.checkSquare, color: Color(0xFF2563EB), size: 40),
-                              ),
-                              const SizedBox(height: 16),
-                              Text("Verify Receipt", style: GoogleFonts.inter(fontWeight: FontWeight.w900, fontSize: 22, color: const Color(0xFF1E293B))),
-                              const SizedBox(height: 8),
-
-                              // Display what item is being verified
-                              Text(data['itemName'] ?? "Donation Package", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF2563EB))),
-                              Text("From: ${data['deliveryMethod'] == 'driver' ? 'Logistics Courier' : 'Donor Drop-off'}", style: const TextStyle(color: Colors.grey)),
-
-                              const Divider(height: 32),
-                              const Text(
-                                  "Confirm that this item has been successfully received at the NGO Hub and marked for final distribution.",
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(color: Color(0xFF64748B), fontSize: 13, height: 1.5)
-                              ),
-                              const SizedBox(height: 24),
-
-                              // Confirm & Distribute Button
-                              SizedBox(
-                                  width: double.infinity,
-                                  height: 50,
-                                  child: ElevatedButton.icon(
-                                      icon: const Icon(LucideIcons.checkCircle),
-                                      label: const Text("Verify & Distribute", style: TextStyle(fontWeight: FontWeight.bold)),
-                                      style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFF2563EB),
-                                          foregroundColor: Colors.white,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                                      ),
-                                      onPressed: isProcessing ? null : () async {
-                                        setState(() => isProcessing = true);
-
-                                        try {
-                                          // Update Firestore with the new milestones & completed status
-                                          await docRef.update({
-                                            'milestones': updatedMilestones,
-                                            'status': 'Distributed',
-                                          });
-
-                                          await creditImpactIfMilestonesComplete(docRef);
-                                          if (context.mounted) {
-                                            Navigator.pop(context); // Close dialog
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text("Success! Item verified and marked as distributed."),
-                                                  backgroundColor: Color(0xFF10B981), // Emerald Green
-                                                  behavior: SnackBarBehavior.floating,
-                                                )
-                                            );
-                                          }
-                                        } catch (e) {
-                                          setState(() => isProcessing = false);
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text("Error: $e"), backgroundColor: Colors.redAccent)
-                                          );
-                                        }
-                                      }
-                                  )
-                              ),
-                              const SizedBox(height: 8),
-                              TextButton(
-                                  onPressed: isProcessing ? null : () => Navigator.pop(context),
-                                  child: const Text("Cancel", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))
-                              )
-                            ]
-                        )
-                    )
-                );
-              }
-          );
-        }
-    );
-  }
-
-  void _showAddNeedDialog({required bool isPhysical}) {
-    final loc = TextEditingController();
-    final desc = TextEditingController();
-    String urgency = 'High';
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 32),
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(isPhysical ? "REQUEST PHYSICAL GOODS" : "NEW FIELD REPORT",
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF2563EB), letterSpacing: 1.0)),
-            const SizedBox(height: 24),
-
-            TextField(
-                controller: loc,
-                decoration: InputDecoration(
-                    labelText: isPhysical ? "Drop-off Location" : "Location (District)",
-                    filled: true, fillColor: const Color(0xFFF8FAFC),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)
-                )
-            ),
-            const SizedBox(height: 16),
-
-            TextField(
-                controller: desc,
-                maxLines: 3,
-                decoration: InputDecoration(
-                    labelText: isPhysical ? "Items needed (e.g., 50x Rice)" : "Summary of Crisis",
-                    filled: true, fillColor: const Color(0xFFF8FAFC),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)
-                )
-            ),
-            const SizedBox(height: 24),
-
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2563EB), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                onPressed: () async {
-                  if (loc.text.isEmpty || desc.text.isEmpty) return;
-                  await _db.collection('needs').add({
-                    'ngoId': user?.uid,
-                    'locationName': loc.text,
-                    'description': desc.text,
-                    'urgency': urgency,
-                    'type': isPhysical ? 'Physical' : 'Field',
-                    'createdAt': FieldValue.serverTimestamp(),
-                    'lat': 4.21, 'lng': 101.9,
-                  });
-                  if (mounted) Navigator.pop(context);
-                },
-                child: const Text("PUBLISH TO MAP", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
-              ),
-            ),
-            const SizedBox(height: 32),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -5302,34 +5062,6 @@ class _ReliefMapState extends State<ReliefMap> {
     }
   }
 
-  void _onMarkerTapped(int index, Map<String, dynamic> data) {
-    String locId = (data['location'] ?? "").toString().trim();
-
-    // Update the Green Border
-    setState(() {
-      _selectedLocationId = locId;
-    });
-
-    // Move Map safely
-    _safeMapMove(
-      latLng: MapLatLng(
-        double.tryParse(data['lat'].toString()) ?? 4.5,
-        double.tryParse(data['lng'].toString()) ?? 109.3,
-      ),
-      zoom: 10,
-    );
-
-    // Scroll the list below the map
-    if (_pageScrollController.hasClients) {
-      double scrollOffset = 450.0 + (index * 210.0);
-      _pageScrollController.animateTo(
-        scrollOffset.clamp(0, _pageScrollController.position.maxScrollExtent),
-        duration: const Duration(milliseconds: 800),
-        curve: Curves.fastOutSlowIn,
-      );
-    }
-  }
-
   // --- THE CORE LOGIC: SYNC BETWEEN FIRESTORE CACHE AND AI ---
   Future<void> _syncReliefData({bool forceRefresh = false}) async {
     setState(() => isLoading = true);
@@ -5374,89 +5106,6 @@ class _ReliefMapState extends State<ReliefMap> {
       }
     });
     target['needed_items'] = targetItems;
-  }
-
-  Future<bool> _fetchNewDataFromAI() async {
-    try {
-      // 1. FETCH OLD CACHE FIRST TO RESCUE NGO DATA
-      final oldSnapshot = await FirebaseFirestore.instance.collection('relief_cache').doc('current_status').get();
-      List<dynamic> oldResults = [];
-      if (oldSnapshot.exists) {
-        oldResults = oldSnapshot.data()?['results'] ?? [];
-      }
-
-      // 2. RUN AI GENERATION
-      final apiKey = dotenv.env['GEMINI_KEY'];
-      print("API KEY: ${dotenv.env['GEMINI_KEY']}");
-      final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey!);
-
-      final prompt = "Search active disaster situations in Malaysia (Last 48h). Categories: Flood Relief, Food Security, Medical Aid. Return strictly RAW JSON LIST ONLY. Provide exactly 3 specific items for each category in needed_items. Format: [{\"location\": \"string\", \"category\": \"string\", \"description\": \"string\", \"score\": 90, \"lat\": 4.0, \"lng\": 101.0, \"severities\": {\"edu\": \"Medium/High/Critical\", \"cloth\": \"Medium/High/Critical\", \"food\": \"Medium/High/Critical\", \"med\": \"Medium/High/Critical\", \"rel\": \"Medium/High/Critical\"}, \"needed_items\": {\"edu\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"cloth\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"food\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"med\": [\"Item 1\", \"Item 2\", \"Item 3\"], \"rel\": [\"Item 1\", \"Item 2\", \"Item 3\"]}}]";
-      final response = await model.generateContent([Content.text(prompt)]);
-      String rawJson = response.text ?? "[]";
-
-      // Clean JSON string
-      rawJson = rawJson.replaceAll('```json', '').replaceAll('```', '').trim();
-      int start = rawJson.indexOf('[');
-      int end = rawJson.lastIndexOf(']');
-      if (start != -1 && end != -1) rawJson = rawJson.substring(start, end + 1);
-
-      final List<dynamic> newAiResults = jsonDecode(rawJson);
-
-      // ==========================================
-      // 3. SMART MERGE LOGIC
-      // ==========================================
-      List<dynamic> mergedResults = [];
-
-      // Step A: Rescue all Manually Added Locations
-      for (var oldZone in oldResults) {
-        bool isManual = oldZone['isManual'] == true || (oldZone['description']?.toString().contains("NGO REPORT:") ?? false);
-        if (isManual) {
-          mergedResults.add(oldZone);
-        }
-      }
-
-      // Step B: Process New AI Locations & Rescue Items
-      for (var aiZone in newAiResults) {
-        String aiLoc = aiZone['location'] ?? "";
-
-        // Check if this AI location happens to be the same as a manual location we just added
-        int existingIndex = mergedResults.indexWhere((z) => z['location'] == aiLoc);
-
-        if (existingIndex != -1) {
-          // Just merge the AI items into the existing manual zone
-          _mergeItemsIntoTarget(mergedResults[existingIndex], aiZone);
-        } else {
-          // If it's a normal AI zone, check if it existed in the OLD data
-          // If it did, rescue any items the NGO might have manually added to it!
-          var oldAiZone = oldResults.firstWhere((z) => z['location'] == aiLoc, orElse: () => null);
-
-          if (oldAiZone != null) {
-            _mergeItemsIntoTarget(aiZone, oldAiZone as Map<String, dynamic>);
-          }
-
-          // Add the merged AI zone to the final list
-          mergedResults.add(aiZone);
-        }
-      }
-
-      // 4. SAVE MERGED DATA TO FIRESTORE
-      await FirebaseFirestore.instance.collection('relief_cache').doc('current_status').set({
-        'results': mergedResults,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-
-      _updateUI(mergedResults, DateTime.now());
-      return true; // Success
-
-    } catch (e) {
-      debugPrint("AI Fetch Failed (Quota?): $e");
-      if (e.toString().contains('429') || e.toString().contains('quota')) {
-        debugPrint("Quota reached! Please wait 60 seconds.");
-      } else {
-        debugPrint("AI Error: $e");
-      }
-      return false; // Failed
-    }
   }
 
   void _updateUI(List<dynamic> data, DateTime time) {
@@ -5659,27 +5308,6 @@ class _ReliefMapState extends State<ReliefMap> {
             )
         ),
       ),
-    );
-  }
-  // --- VIEW ON MAP LOGIC (Direct to location) ---
-  void _directToLocation(Map<String, dynamic> item, int index) {
-    setState(() {
-      _selectedLocationId = item['location'].toString().trim();
-
-      // Update Map View
-      _zoomPanBehavior.focalLatLng = MapLatLng(
-          double.parse(item['lat'].toString()),
-          double.parse(item['lng'].toString())
-      );
-      _zoomPanBehavior.zoomLevel = 10;
-    });
-
-    // Scroll to the card in the list
-    double scrollOffset = 450.0 + (index * 210.0);
-    _pageScrollController.animateTo(
-      scrollOffset,
-      duration: const Duration(milliseconds: 800),
-      curve: Curves.fastOutSlowIn,
     );
   }
 
@@ -6849,299 +6477,6 @@ class _ReliefMapState extends State<ReliefMap> {
     );
   }
 
-  // ==========================================
-  // NEW: DONATION & COURIER TRACKING DASHBOARD
-  // ==========================================
-  void _showTrackingDashboard(BuildContext context) {
-    final String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
-    if (uid.isEmpty) return;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.85,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(topLeft: Radius.circular(32), topRight: Radius.circular(32)),
-          ),
-          child: Column(
-            children: [
-              // 1. Header
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: const BoxDecoration(
-                  color: kBlue,
-                  borderRadius: BorderRadius.only(topLeft: Radius.circular(32), topRight: Radius.circular(32)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("Track Logistics", style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20)),
-                          const Text("COURIER & DROP-OFF STATUS", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(LucideIcons.x, color: Colors.white, size: 24),
-                    )
-                  ],
-                ),
-              ),
-
-              // 2. Body (Real-time Stream from Firebase)
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('users')
-                      .doc(uid)
-                      .collection('donations')
-                      .orderBy('timestamp', descending: true)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator(color: kBlue));
-                    }
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return const Center(
-                        child: Text("No active logistics found.", style: TextStyle(color: kSlate500, fontWeight: FontWeight.w600)),
-                      );
-                    }
-
-                    final docs = snapshot.data!.docs;
-
-                    return ListView.builder(
-                      padding: const EdgeInsets.all(20),
-                      itemCount: docs.length,
-                      itemBuilder: (context, index) {
-                        final data = docs[index].data() as Map<String, dynamic>;
-                        return _buildDonationTrackerCard(context, data);
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildDonationTrackerCard(BuildContext context, Map<String, dynamic> data) {
-    bool isMoney = data['type'] == 'money';
-    String title = isMoney ? "RM ${data['amount']}" : (data['itemName'] ?? "Donation");
-    String target = data['target'] ?? "Unknown Location";
-    String status = data['status'] ?? "Processing";
-    String deliveryMethod = data['deliveryMethod'] ?? "self";
-    List<dynamic> milestones = data['milestones'] ?? [];
-    String qrData = data['qrCodeData'] ?? "";
-
-    bool isCompleted = status.toLowerCase().contains("distributed") || status.toLowerCase().contains("arrived");
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: kSlate100, width: 2),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Top Info Row
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                // Item Image
-                Container(
-                  width: 50, height: 50,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: kSlate100,
-                    image: data['imageUrl'] != null
-                        ? DecorationImage(image: NetworkImage(data['imageUrl']), fit: BoxFit.cover)
-                        : null,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: kSlate800)),
-                      Text(target, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: kSlate500)),
-                    ],
-                  ),
-                ),
-                // Status Badge
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isCompleted ? kEmerald.withOpacity(0.1) : kBlue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    status.toUpperCase(),
-                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: isCompleted ? kEmerald : kBlue),
-                  ),
-                )
-              ],
-            ),
-          ),
-
-          const Divider(height: 1, color: kSlate100),
-
-          // Milestone Timeline (Updates in real-time!)
-          if (milestones.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: List.generate(milestones.length, (index) {
-                  final m = milestones[index];
-                  bool isDone = m['done'] == true;
-                  bool isLast = index == milestones.length - 1;
-
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Timeline Graphic (Dots and Lines)
-                      Column(
-                        children: [
-                          Container(
-                            width: 20, height: 20,
-                            decoration: BoxDecoration(
-                              color: isDone ? kBlue : Colors.white,
-                              border: Border.all(color: isDone ? kBlue : kSlate200, width: 2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: isDone ? const Icon(LucideIcons.check, size: 12, color: Colors.white) : null,
-                          ),
-                          if (!isLast)
-                            Container(width: 2, height: 30, color: isDone ? kBlue : kSlate200),
-                        ],
-                      ),
-                      const SizedBox(width: 16),
-                      // Milestone Text
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(
-                            m['label'] ?? "",
-                            style: TextStyle(
-                              fontWeight: isDone ? FontWeight.w800 : FontWeight.w600,
-                              color: isDone ? kSlate800 : kSlate400,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      )
-                    ],
-                  );
-                }),
-              ),
-            ),
-
-          // Show QR Code Button (Only if it's an item and not completed yet)
-          if (!isCompleted && !isMoney && qrData.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => _showSavedQRDialog(context, qrData, target, deliveryMethod),
-                  icon: const Icon(LucideIcons.qrCode, size: 16),
-                  label: const Text("Show QR Code", style: TextStyle(fontWeight: FontWeight.bold)),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: kBlue,
-                    side: const BorderSide(color: kBlue, width: 2),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-            )
-        ],
-      ),
-    );
-  }
-
-  void _showSavedQRDialog(BuildContext context, String qrData, String target, String deliveryMethod) {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text("DONATION QR CODE", style: TextStyle(fontWeight: FontWeight.w900, color: kBlue, letterSpacing: 1.0, fontSize: 12)),
-              const SizedBox(height: 16),
-
-              // Generated QR Code
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                    border: Border.all(color: kSlate100, width: 2),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)]
-                ),
-                child: Image.network(
-                  "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$qrData",
-                  width: 150,
-                  height: 150,
-                  loadingBuilder: (context, child, progress) => progress == null ? child : const CircularProgressIndicator(color: kBlue),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              Text(qrData, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kSlate800)),
-              Text(target, style: const TextStyle(color: kSlate500, fontSize: 12)),
-              const SizedBox(height: 16),
-
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(color: kBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                child: Text(
-                  deliveryMethod == 'self' ? "Show this to the NGO drop-off officer." : "Show this to the logistics courier.",
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: kBlue, fontSize: 12, fontWeight: FontWeight.bold),
-                ),
-              ),
-
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: kBlue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 0
-                  ),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("Close", style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              )
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-
   Widget _buildDeliveryOption({
     required String title,
     required IconData icon,
@@ -7314,62 +6649,6 @@ class _ReliefMapState extends State<ReliefMap> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  // --- PROFESSIONAL ERROR HELPER ---
-  void _showFundingError(BuildContext context, double currentBalance) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Row(
-          children: [
-            Icon(LucideIcons.alertCircle, color: Colors.redAccent, size: 24),
-            SizedBox(width: 12),
-            Text("Insufficient Funding", style: TextStyle(fontWeight: FontWeight.w800)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Your KitaCare Wallet balance is insufficient to complete this transaction.",
-                style: TextStyle(color: kSlate500, fontSize: 14)),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: kSlate50, borderRadius: BorderRadius.circular(12)),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text("Current Balance:", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                  Text("RM ${currentBalance.toStringAsFixed(2)}",
-                      style: const TextStyle(fontWeight: FontWeight.w900, color: kSlate800)),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel", style: TextStyle(color: kSlate400, fontWeight: FontWeight.bold)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: kEmerald,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: () {
-              Navigator.pop(context);
-              if (widget.onTopUp != null) widget.onTopUp!(); // Call the trigger
-            },
-            child: const Text("Top Up Wallet"),
-          ),
-        ],
       ),
     );
   }
@@ -8704,9 +7983,6 @@ Future<void> creditImpactIfMilestonesComplete(DocumentReference donationRef) asy
   }
 }
 
-// ==========================================
-// NEW TAB: LOGISTICS DASHBOARD (FULL PAGE)
-// ==========================================
 // ==========================================
 // NEW TAB: LOGISTICS DASHBOARD (FULL PAGE)
 // ==========================================
