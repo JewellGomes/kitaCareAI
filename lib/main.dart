@@ -2295,7 +2295,7 @@ class _CourierDashboardState extends State<CourierDashboard> {
                     child: StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance
                           .collectionGroup('donations')
-                          .where('status', isEqualTo: 'Drop-off Verified')
+                          .where('status', isEqualTo: 'Arrived at NGO Hub')
                           .where('courierId', isEqualTo: currentUid)
                           .snapshots(),
                       builder: (context, snapshot) {
