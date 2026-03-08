@@ -101,19 +101,19 @@ class _AuthWrapperState extends State<AuthWrapper> {
     );
   }
 
-  // --- UPDATED AUTH LOGIC WITH ROLE PROTECTION & SIGNUP ---
+  // --- BULLETPROOF AUTH LOGIC ---
+  // --- BULLETPROOF AUTH LOGIC (ANDROID EMULATOR FIX) ---
   Future<void> _handleAuth() async {
     if (_emailController.text.isEmpty || _passController.text.isEmpty) {
       _showError("Please fill in all fields.");
       return;
     }
+
+    FocusScope.of(context).unfocus();
     setState(() => _isLoading = true);
 
     try {
       if (view == 'signup') {
-        // ==========================================
-        // 1. SIGN UP LOGIC
-        // ==========================================
         UserCredential userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passController.text.trim(),
@@ -122,55 +122,81 @@ class _AuthWrapperState extends State<AuthWrapper> {
         String userName = _nameController.text.trim();
         if (userName.isEmpty) userName = "New User";
 
-        // Save the user data (including their selected role) to Firestore
         await FirebaseFirestore.instance.collection('users').doc(userCred.user!.uid).set({
           'name': userName,
           'email': _emailController.text.trim(),
-          'role': selectedRole, // This saves 'donor', 'ngo', or 'courier'
+          'role': selectedRole,
           'createdAt': FieldValue.serverTimestamp(),
-          // Default stats used by the Donor Dashboard
           'walletBalance': 0.0,
           'impactValue': 0.0,
           'livesTouched': 0,
         });
 
-        // Navigate into the app
         _navigateToApp(userName);
 
       } else {
-        // ==========================================
-        // 2. LOGIN LOGIC
-        // ==========================================
         UserCredential userCred = await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passController.text.trim(),
         );
 
-        // Fetch Role from Firestore
+        // ==========================================
+        // EMULATOR FIX: Force Server Fetch & Timeout
+        // ==========================================
         DocumentSnapshot doc = await FirebaseFirestore.instance
             .collection('users')
             .doc(userCred.user!.uid)
-            .get();
+            .get(const GetOptions(source: Source.server)) // Forces it to bypass broken Android cache
+            .timeout(const Duration(seconds: 10), onTimeout: () {
+          throw "Database connection timed out. Check emulator internet.";
+        });
 
         if (doc.exists) {
-          String dbRole = doc['role']; // The role saved in Database
+          Map<String, dynamic>? data = doc.data() as Map<String, dynamic>?;
 
-          // SECURITY CHECK: Compare DB Role with Selected UI Role
+          if (data == null || !data.containsKey('role')) {
+            String autoName = selectedRole == 'ngo' ? "Official NGO" : "New User";
+            await FirebaseFirestore.instance.collection('users').doc(userCred.user!.uid).set({
+              'name': autoName,
+              'email': _emailController.text.trim(),
+              'role': selectedRole,
+              'createdAt': FieldValue.serverTimestamp(),
+              'walletBalance': 0.0,
+              'impactValue': 0.0,
+              'livesTouched': 0,
+            });
+            _navigateToApp(autoName);
+            return;
+          }
+
+          String dbRole = data['role'];
+
           if (dbRole != selectedRole) {
-            // Role Mismatch! Logout immediately.
             await FirebaseAuth.instance.signOut();
             _showError("Access Denied: This account is registered as a ${dbRole.toUpperCase()}.");
             return;
           }
 
-          // Role Matches! Proceed.
-          _navigateToApp(doc['name'] ?? "User");
+          _navigateToApp(data['name'] ?? "User");
+        } else {
+          String autoName = selectedRole == 'ngo' ? "Official NGO" : "New User";
+          await FirebaseFirestore.instance.collection('users').doc(userCred.user!.uid).set({
+            'name': autoName,
+            'email': _emailController.text.trim(),
+            'role': selectedRole,
+            'createdAt': FieldValue.serverTimestamp(),
+            'walletBalance': 0.0,
+            'impactValue': 0.0,
+            'livesTouched': 0,
+          });
+          _navigateToApp(autoName);
         }
       }
     } on FirebaseAuthException catch (e) {
       _showError(e.message ?? "Authentication failed.");
     } catch (e) {
-      _showError("An error occurred: $e");
+      _showError("Error: $e");
+      print("CRITICAL ERROR: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -7884,7 +7910,7 @@ class _NotificationBellState extends State<NotificationBell> {
 }
 
 // ==========================================
-// 5. AI ADVISOR PAGE (DYNAMIC FOR DONOR & NGO)
+// 5. AI ADVISOR PAGE (DEEPLY INTEGRATED)
 // ==========================================
 class AiAdvisorPage extends StatefulWidget {
   final String role; // 'donor' or 'ngo'
@@ -7903,15 +7929,48 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
   @override
   void initState() {
     super.initState();
-    // Initialize the first message based on the role
     _messages = [
       {
         "role": "ai",
         "text": widget.role == 'ngo'
-            ? "Selamat Sejahtera! I am KitaCare NGO Support AI. I can assist you with managing physical item needs, verifying drop-off receipts, or checking disbursement logs. How can I help your mission today?"
-            : "Selamat Sejahtera! I am KitaCare AI. I can help you find verified NGOs, manage your donation wallet, or find the nearest drop-off point for physical items. What would you like to know?"
+            ? "Selamat Sejahtera! I am KitaCare NGO Support AI. I am connected to your NGO Portal. I can check your wallet, help you log disbursements, or verify incoming drop-offs. How can I assist your mission today?"
+            : "Selamat Sejahtera! I am KitaCare AI. I am securely connected to your account. I can check your wallet balance, tell you your Philanthropy Tier, or guide you on how to donate. What do you need help with?"
       }
     ];
+  }
+
+  // --- HELPER 1: Calculate Tier ---
+  String _calculateTier(double impactScore) {
+    if (impactScore >= 5000) return "PLATINUM (National Hero)";
+    if (impactScore >= 1000) return "GOLD (Community Pillar)";
+    if (impactScore >= 200) return "SILVER (Generous Giver)";
+    return "BRONZE (Rising Supporter)";
+  }
+
+  // --- HELPER 2: Fetch Live User Context ---
+  Future<Map<String, String>> _fetchUserContext() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? "";
+    if (uid.isEmpty) return {"balance": "0.00", "tier": "Unknown", "name": "User"};
+
+    try {
+      DocumentSnapshot doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (doc.exists) {
+        var data = doc.data() as Map<String, dynamic>;
+        double balance = (data['walletBalance'] ?? 0.0).toDouble();
+        double impact = (data['impactValue'] ?? 0.0).toDouble();
+        String name = data['name'] ?? "User";
+
+        return {
+          "balance": balance.toStringAsFixed(2),
+          "tier": _calculateTier(impact),
+          "name": name,
+          "impact": impact.toStringAsFixed(2)
+        };
+      }
+    } catch (e) {
+      debugPrint("Context fetch error: $e");
+    }
+    return {"balance": "0.00", "tier": "Unknown", "name": "User"};
   }
 
   Future<void> _sendMessage() async {
@@ -7926,76 +7985,75 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
     _scrollToBottom();
 
     try {
-      // 1. Check API Key
-      final apiKey = dotenv.env['GEMINI_ADVISOR_KEY'] ?? dotenv.env['GEMINI_KEY']; // Fallback to main key if advisor key is missing
-      if (apiKey == null || apiKey.isEmpty) throw "API Key not found in .env file";
+      final apiKey = dotenv.env['GEMINI_ADVISOR_KEY'] ?? dotenv.env['GEMINI_KEY'];
+      if (apiKey == null || apiKey.isEmpty) throw "API Key not found";
 
-      final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey);
+      final model = GenerativeModel(model: 'gemini-3.1-flash-lite-preview', apiKey: apiKey);
 
-      // ==========================================
-      // 2. FETCH LIVE SYSTEM DATA FROM FIREBASE
-      // ==========================================
-      String liveContext = "Current Active Disaster Zones & Needs:\n";
+      // 1. GET REAL USER DATA
+      final userCtx = await _fetchUserContext();
+
+      // 2. GET RELIEF MAP DATA
+      String liveMapContext = "Active Zones:\n";
       try {
         final cacheSnap = await FirebaseFirestore.instance.collection('relief_cache').doc('current_status').get();
         if (cacheSnap.exists && cacheSnap.data() != null) {
           List<dynamic> results = cacheSnap.data()!['results'] ?? [];
-
-          if (results.isEmpty) {
-            liveContext += "No active disaster zones currently.";
-          } else {
-            for (var zone in results) {
-              String loc = zone['location'] ?? "Unknown";
-              String cat = zone['category'] ?? "General";
-              int score = (zone['score'] as num?)?.toInt() ?? 50;
-
-              // Extract specific items requested
-              List<String> neededItemsList = [];
-              Map<String, dynamic> itemsMap = zone['needed_items'] ?? {};
-              itemsMap.forEach((key, value) {
-                if (value is List) {
-                  for (var item in value) {
-                    if (item.toString() != "Blanket") { // Ignore the generic placeholder
-                      neededItemsList.add(item.toString());
-                    }
-                  }
-                }
-              });
-
-              String needsStr = neededItemsList.isEmpty ? "General supplies" : neededItemsList.join(", ");
-              liveContext += "- $loc ($cat, Urgency: $score/100). Needs: $needsStr\n";
-            }
+          for (var zone in results) {
+            liveMapContext += "- ${zone['location']} (Needs: ${zone['category']})\n";
           }
         }
       } catch (e) {
-        liveContext += "(Real-time data currently syncing...)";
-        debugPrint("Error fetching live context for AI: $e");
+        liveMapContext = "Map data currently syncing.";
       }
 
-      // ==========================================
-      // 3. CONSTRUCT DYNAMIC PROMPT FOR GEMINI
-      // ==========================================
-      String systemRole = widget.role == 'ngo'
-          ? "You are KitaCare NGO Support AI. Assist NGOs in Malaysia with disaster relief logistics, field reports, and prioritizing deployments. Base your advice heavily on the LIVE SYSTEM CONTEXT provided. Keep responses professional, highly actionable, and concise."
-          : "You are KitaCare AI, an expert humanitarian advisor for a Malaysian disaster relief app. Assist donors with finding where their help is most needed. Base your recommendations heavily on the LIVE SYSTEM CONTEXT provided. Keep responses professional, empathetic, and concise.";
+      // 3. BUILD THE "APP MANUAL"
+      // Conditionally build triggers based on role
+      String actionTriggers = "If the user wants to top up their wallet, include this tag: [ACTION: TOP_UP]";
+
+      if (widget.role == 'ngo') {
+        actionTriggers += "\nIf the user explicitly asks you to verify a drop off, scan a QR code, or enter a receipt ID, you MUST include this exact tag at the end of your message: [ACTION: VERIFY_RECEIPT]";
+      } else {
+        actionTriggers += "\nIf the user asks to verify a drop off or scan a QR code, politely inform them that only authorized NGOs can perform this action. Do NOT include any action tags.";
+      }
+
+      String appManual = """
+      --- APP MANUAL & CAPABILITIES ---
+      You are the official KitaCare AI integrated directly into the Flutter app. You have access to the user's secure data.
+
+      USER LIVE PROFILE:
+      - Name: ${userCtx['name']}
+      - Role: ${widget.role.toUpperCase()}
+      - Wallet Balance: RM ${userCtx['balance']}
+      - Philanthropy Tier: ${userCtx['tier']}
+      - Total Impact Points: ${userCtx['impact']}
+
+      HOW TO USE THE APP (Explain these exactly if asked):
+      - How to top-up wallet: "Go to your Dashboard (first tab at the bottom), find the KitaCare Wallet section, and tap the 'Top Up Funds' button."
+      - How to donate items or money: "Go to the Relief Map tab, tap on any location marker, and click the green 'Contribute Now' button."
+      - How to see philanthropy tier: "Your current tier is ${userCtx['tier']}. You can view your full journey and download tax certificates on the 'My Impact' tab."
+      ${widget.role == 'ngo' ? '- How to verify drop-off (NGO only): "I can open the scanner or manual entry for you right here in the chat!"' : ''}
+      
+      ACTION TRIGGERS (Crucial!):
+      $actionTriggers
+      """;
 
       final prompt = """
-      $systemRole
-
-      LIVE SYSTEM CONTEXT:
-      $liveContext
+      $appManual
+      
+      MAP DATA: $liveMapContext
 
       USER QUESTION:
       $text
+      
+      Remember: Answer naturally and conversationally. Use the User Live Profile to answer personal questions directly.
       """;
 
-      // 4. Get Response from Gemini
       final response = await model.generateContent([Content.text(prompt)]);
 
       setState(() {
         _messages.add({
           "role": "ai",
-          // Remove markdown bolding (*) to keep text clean
           "text": response.text?.replaceAll('*', '') ?? "I apologize, I couldn't process that request."
         });
         _isLoading = false;
@@ -8003,11 +8061,10 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
       _scrollToBottom();
 
     } catch (e) {
-      debugPrint("GEMINI ADVISOR ERROR: $e");
       setState(() {
         _messages.add({
           "role": "ai",
-          "text": "Sorry, I encountered an error connecting to my knowledge base. Please check your internet or API key."
+          "text": "Sorry, I encountered an error connecting to my system. $e"
         });
         _isLoading = false;
       });
@@ -8026,19 +8083,379 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
     });
   }
 
+  // --- UI ACTION INTERCEPTION HANDLERS ---
+  void _executeAction(String action) async {
+    // GUARD: Ensure only NGOs can use scanner/manual entry
+    if ((action == 'SCAN_QR' || action == 'MANUAL_ENTRY') && widget.role != 'ngo') {
+      _showErrorSnackBar("Access Denied: Only NGOs can verify drop-offs.");
+      return;
+    }
+
+    if (action == 'SCAN_QR') {
+      final scannedCode = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const QRScannerScreen()),
+      );
+      // Wait for scanner to return code, then process it instantly
+      if (scannedCode != null && scannedCode is String) {
+        _processNGOQrScan(scannedCode);
+      }
+    } else if (action == 'MANUAL_ENTRY') {
+      _showManualEntryDialog(context);
+    } else if (action == 'TOP_UP') {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("Navigating... Please go to your Dashboard tab to Top Up."),
+            backgroundColor: widget.role == 'ngo' ? kBlue : kEmerald,
+            behavior: SnackBarBehavior.floating,
+          )
+      );
+    }
+  }
+
+  // ==========================================
+  // IN-CHAT VERIFICATION LOGIC
+  // ==========================================
+
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(LucideIcons.alertCircle, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  void _showManualEntryDialog(BuildContext context) {
+    final TextEditingController idController = TextEditingController();
+    final themeColor = widget.role == 'ngo' ? kBlue : kEmerald;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: themeColor.withOpacity(0.1), shape: BoxShape.circle),
+                  child: Icon(LucideIcons.keyboard, color: themeColor, size: 32),
+                ),
+                const SizedBox(height: 16),
+                Text("Enter Receipt ID", style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.black87)),
+                const SizedBox(height: 8),
+                const Text("Type the donor's receipt ID or alphanumeric code.", textAlign: TextAlign.center, style: TextStyle(color: Colors.black54, fontSize: 13, height: 1.5)),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: idController,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    hintText: "e.g. KC-12345",
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: themeColor, width: 2)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final enteredId = idController.text.trim();
+                      if (enteredId.isNotEmpty) {
+                        Navigator.pop(context);
+                        _verifyReceiptId(enteredId);
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: themeColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                    child: const Text("Verify Receipt", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text("Cancel", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 15)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _verifyReceiptId(String receiptId) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(child: CircularProgressIndicator(color: widget.role == 'ngo' ? kBlue : kEmerald)),
+    );
+
+    try {
+      var querySnapshot = await FirebaseFirestore.instance.collectionGroup('donations').where('id', isEqualTo: receiptId).limit(1).get();
+
+      if (querySnapshot.docs.isEmpty) {
+        querySnapshot = await FirebaseFirestore.instance.collectionGroup('donations').where('qrCodeData', isEqualTo: receiptId).limit(1).get();
+      }
+
+      if (querySnapshot.docs.isEmpty) {
+        Navigator.pop(context);
+        _showErrorSnackBar("Receipt ID not found in the system.");
+        return;
+      }
+
+      final docReference = querySnapshot.docs.first;
+      final data = docReference.data();
+
+      if (data['type'] == 'money') {
+        Navigator.pop(context);
+        _showErrorSnackBar("Cannot verify money donations. Only physical items.");
+        return;
+      }
+
+      bool hasArrivedAtHubMilestone = false;
+      bool isArrivedAtHubDone = false;
+      bool isPickedUpDone = false;
+      bool isPledgeConfirmedDone = false;
+
+      bool isReceived = false;
+      bool isDistributed = false;
+      List<dynamic> milestones = List.from(data['milestones'] ?? []);
+
+      for (var m in milestones) {
+        if (m['label'] == 'Picked Up & In Transit' && m['done'] == true) isPickedUpDone = true;
+        if (m['label'] == 'Arrived at NGO Hub') {
+          hasArrivedAtHubMilestone = true;
+          if (m['done'] == true) isArrivedAtHubDone = true;
+        }
+        if (m['label'] == 'Pledge Confirmed' && m['done'] == true) isPledgeConfirmedDone = true;
+        if (m['label'] == 'Drop-off Verified' && m['done'] == true) isReceived = true;
+        if (m['label'] == 'Distributed' && m['done'] == true) isDistributed = true;
+      }
+
+      if (isDistributed) {
+        Navigator.pop(context);
+        _showErrorSnackBar("Action Denied: This donation has already been verified and distributed.");
+        return;
+      }
+
+      bool isReadyForVerification = false;
+      String errorMessage = "";
+
+      if (!isReceived) {
+        if (hasArrivedAtHubMilestone) {
+          if (isPickedUpDone && isArrivedAtHubDone) isReadyForVerification = true;
+          else {
+            if (!isPickedUpDone) errorMessage = "Verification failed: Courier hasn't picked this up.";
+            else if (!isArrivedAtHubDone) errorMessage = "Verification failed: Courier hasn't dropped this at the Hub.";
+          }
+        } else {
+          if (isPledgeConfirmedDone) isReadyForVerification = true;
+          else errorMessage = "Verification failed: Pledge not confirmed.";
+        }
+
+        if (!isReadyForVerification) {
+          Navigator.pop(context);
+          _showErrorSnackBar(errorMessage);
+          return;
+        }
+
+        Navigator.pop(context);
+        _showNGOActionDialog(docReference.reference, data, milestones, 'receive');
+      } else {
+        Navigator.pop(context);
+        _showNGOActionDialog(docReference.reference, data, milestones, 'distribute');
+      }
+    } catch (e) {
+      Navigator.pop(context);
+      _showErrorSnackBar("Error: ${e.toString()}");
+    }
+  }
+
+  Future<void> _processNGOQrScan(String qrData) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Center(child: CircularProgressIndicator(color: widget.role == 'ngo' ? kBlue : kEmerald)),
+    );
+
+    try {
+      var query = await FirebaseFirestore.instance.collectionGroup('donations').where('qrCodeData', isEqualTo: qrData).get();
+
+      if (query.docs.isEmpty) {
+        if (mounted) Navigator.pop(context);
+        _showErrorSnackBar("Invalid QR Code. Donation package not found.");
+        return;
+      }
+
+      var doc = query.docs.first;
+      var data = doc.data();
+      List<dynamic> milestones = List.from(data['milestones'] ?? []);
+
+      bool isReceived = false;
+      bool isDistributed = false;
+
+      for (var m in milestones) {
+        if (m['label'] == 'Drop-off Verified' && m['done'] == true) isReceived = true;
+        if (m['label'] == 'Distributed' && m['done'] == true) isDistributed = true;
+      }
+
+      if (mounted) Navigator.pop(context);
+
+      if (isDistributed) {
+        _showErrorSnackBar("Action Denied: This donation has already been distributed.");
+        return;
+      }
+
+      if (!isReceived) {
+        _showNGOActionDialog(doc.reference, data, milestones, 'receive');
+      } else {
+        _showNGOActionDialog(doc.reference, data, milestones, 'distribute');
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      _showErrorSnackBar("Error processing QR: $e");
+    }
+  }
+
+  void _showNGOActionDialog(DocumentReference docRef, Map<String, dynamic> data, List<dynamic> milestones, String action) {
+    bool isReceiving = action == 'receive';
+    String title = isReceiving ? "Verify Hub Drop-off" : "Log Final Distribution";
+    String itemText = data['itemName'] ?? "Donation Package";
+    String descText = isReceiving
+        ? "Confirm that this item has been successfully received at the NGO Hub and logged into inventory."
+        : "Confirm that this item is now being handed over to the beneficiaries in the target zone.";
+    String btnText = isReceiving ? "Confirm Receipt at Hub" : "Distribute to Victims";
+    IconData icon = isReceiving ? LucideIcons.box : LucideIcons.users;
+    Color themeCol = isReceiving ? (widget.role == 'ngo' ? kBlue : kEmerald) : kEmerald;
+
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          bool isProcessing = false;
+          return StatefulBuilder(
+              builder: (context, setState) {
+                return Dialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    backgroundColor: Colors.white,
+                    child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(color: themeCol.withOpacity(0.1), shape: BoxShape.circle),
+                                child: Icon(icon, color: themeCol, size: 40),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(title, style: GoogleFonts.inter(fontWeight: FontWeight.w900, fontSize: 22, color: const Color(0xFF1E293B))),
+                              const SizedBox(height: 8),
+                              Text(itemText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeCol)),
+                              Text("Target: ${data['target']}", style: const TextStyle(color: Colors.grey)),
+                              const Divider(height: 32),
+                              Text(descText, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, height: 1.5)),
+                              const SizedBox(height: 24),
+                              SizedBox(
+                                  width: double.infinity,
+                                  height: 50,
+                                  child: ElevatedButton.icon(
+                                      icon: const Icon(LucideIcons.checkCircle),
+                                      label: Text(btnText, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                      style: ElevatedButton.styleFrom(
+                                          backgroundColor: themeCol,
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                                      ),
+                                      onPressed: isProcessing ? null : () async {
+                                        setState(() => isProcessing = true);
+                                        try {
+                                          String todayDate = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
+                                          for (var m in milestones) {
+                                            if (isReceiving && m['label'] == 'Drop-off Verified') { m['done'] = true; m['date'] = todayDate; }
+                                            if (!isReceiving && m['label'] == 'Distributed') { m['done'] = true; m['date'] = todayDate; }
+                                          }
+                                          String newStatus = isReceiving ? "Inventory at Hub" : "Distributed";
+                                          await docRef.update({'milestones': milestones, 'status': newStatus});
+
+                                          if (!isReceiving) {
+                                            await creditImpactIfMilestonesComplete(docRef);
+                                          }
+
+                                          if (context.mounted) {
+                                            Navigator.pop(context);
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(isReceiving ? "Item logged into inventory!" : "Success! Item distributed to beneficiaries."),
+                                                  backgroundColor: themeCol,
+                                                  behavior: SnackBarBehavior.floating,
+                                                )
+                                            );
+                                          }
+                                        } catch (e) {
+                                          setState(() => isProcessing = false);
+                                          _showErrorSnackBar("Error: $e");
+                                        }
+                                      }
+                                  )
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                  onPressed: isProcessing ? null : () => Navigator.pop(context),
+                                  child: const Text("Cancel", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))
+                              )
+                            ]
+                        )
+                    )
+                );
+              }
+          );
+        }
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isNgo = widget.role == 'ngo';
     final themeColor = isNgo ? kBlue : kEmerald;
-    final titleText = isNgo ? "KitaCare NGO AI" : "KitaCare DONOR AI";
+    final titleText = isNgo ? "NGO AI Assistant" : "Donor AI Assistant";
 
     return Container(
       color: const Color(0xFFF8FAFC),
       child: Column(
         children: [
-          // --- HEADER CARD ---
+          // HEADER
           Container(
-            width: double.infinity,
             margin: const EdgeInsets.all(20),
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -8052,21 +8469,21 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(color: themeColor, borderRadius: BorderRadius.circular(12)),
-                  child: const Icon(LucideIcons.messageSquare, color: Colors.white, size: 24),
+                  child: const Icon(LucideIcons.bot, color: Colors.white, size: 24),
                 ),
                 const SizedBox(width: 16),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(titleText, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: kSlate800)),
-                    Text("EXPERT ADVISOR", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: themeColor, letterSpacing: 1.0)),
+                    Text("CONNECTED TO YOUR ACCOUNT", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: themeColor, letterSpacing: 1.0)),
                   ],
                 )
               ],
             ),
           ),
 
-          // --- CHAT AREA ---
+          // CHAT AREA
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -8079,11 +8496,7 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
                     child: Container(
                       margin: const EdgeInsets.only(bottom: 16),
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16), bottomRight: Radius.circular(16)),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
                       child: const PulsingLoadingText(),
                     ),
                   );
@@ -8092,31 +8505,99 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
                 final msg = _messages[index];
                 final isAi = msg['role'] == 'ai';
 
+                // --- ACTION INTERCEPTION LOGIC (DUAL BUTTONS) ---
+                String displayText = msg['text'];
+
+                // ADD `&& isNgo` TO THIS LINE:
+                bool hasVerifyAction = (displayText.contains('[ACTION: VERIFY_RECEIPT]') || displayText.contains('[ACTION: SCAN_QR]')) && isNgo;
+
+                bool hasTopUpAction = displayText.contains('[ACTION: TOP_UP]');
+
+                // Clean the text so the user doesn't see the raw tags
+                displayText = displayText
+                    .replaceAll('[ACTION: VERIFY_RECEIPT]', '')
+                    .replaceAll('[ACTION: SCAN_QR]', '')
+                    .replaceAll('[ACTION: TOP_UP]', '')
+                    .trim();
+
                 return Align(
                   alignment: isAi ? Alignment.centerLeft : Alignment.centerRight,
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 16),
-                    padding: const EdgeInsets.all(20),
                     constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
-                    decoration: BoxDecoration(
-                      color: isAi ? Colors.white : themeColor, // Blue for NGO user texts, Green for Donor
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(16),
-                        topRight: const Radius.circular(16),
-                        bottomLeft: isAi ? Radius.zero : const Radius.circular(16),
-                        bottomRight: isAi ? const Radius.circular(16) : Radius.zero,
-                      ),
-                      border: isAi ? Border.all(color: const Color(0xFFE2E8F0)) : null,
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))],
-                    ),
-                    child: Text(
-                      msg['text'],
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        height: 1.5,
-                        color: isAi ? kSlate800 : Colors.white,
-                        fontWeight: isAi ? FontWeight.w400 : FontWeight.w500,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: isAi ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: isAi ? Colors.white : themeColor,
+                            borderRadius: BorderRadius.only(
+                              topLeft: const Radius.circular(16),
+                              topRight: const Radius.circular(16),
+                              bottomLeft: isAi ? Radius.zero : const Radius.circular(16),
+                              bottomRight: isAi ? const Radius.circular(16) : Radius.zero,
+                            ),
+                            border: isAi ? Border.all(color: const Color(0xFFE2E8F0)) : null,
+                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))],
+                          ),
+                          child: Text(
+                            displayText,
+                            style: GoogleFonts.inter(
+                              fontSize: 14,
+                              height: 1.5,
+                              color: isAi ? kSlate800 : Colors.white,
+                              fontWeight: isAi ? FontWeight.w500 : FontWeight.w600,
+                            ),
+                          ),
+                        ),
+
+                        // --- RENDER DUAL BUTTONS IF VERIFY TAG WAS DETECTED ---
+                        if (hasVerifyAction) ...[
+                          const SizedBox(height: 12),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              ElevatedButton.icon(
+                                onPressed: () => _executeAction('SCAN_QR'),
+                                icon: const Icon(LucideIcons.camera, size: 16),
+                                label: const Text("Scan QR"),
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: themeColor,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                                ),
+                              ),
+                              ElevatedButton.icon(
+                                onPressed: () => _executeAction('MANUAL_ENTRY'),
+                                icon: const Icon(LucideIcons.keyboard, size: 16),
+                                label: const Text("Enter ID"),
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: themeColor,
+                                    side: BorderSide(color: themeColor, width: 1.5),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                                ),
+                              )
+                            ],
+                          )
+                        ],
+
+                        if (hasTopUpAction) ...[
+                          const SizedBox(height: 8),
+                          ElevatedButton.icon(
+                            onPressed: () => _executeAction('TOP_UP'),
+                            icon: const Icon(LucideIcons.wallet, size: 16),
+                            label: const Text("Go to Wallet"),
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: themeColor,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                            ),
+                          )
+                        ]
+                      ],
                     ),
                   ),
                 );
@@ -8124,7 +8605,7 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
             ),
           ),
 
-          // --- INPUT AREA ---
+          // INPUT AREA
           Container(
             padding: const EdgeInsets.all(20),
             decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: kSlate100))),
@@ -8136,13 +8617,12 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
                     onSubmitted: (_) => _sendMessage(),
                     style: const TextStyle(fontSize: 14),
                     decoration: InputDecoration(
-                      hintText: isNgo ? "Ask about receipt verification or logistics..." : "Ask about donation points or tax certificates...",
+                      hintText: isNgo ? "Ask to verify a drop-off..." : "Ask what your Philanthropy tier is...",
                       hintStyle: const TextStyle(color: kSlate400, fontSize: 13),
                       filled: true,
                       fillColor: const Color(0xFFF8FAFC),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
                       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: themeColor)),
                     ),
                   ),
