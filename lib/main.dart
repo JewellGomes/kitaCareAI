@@ -4507,7 +4507,7 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB))),
+      builder: (context) => const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB))), // Hardcoded NGO Blue
     );
 
     try {
@@ -4526,15 +4526,17 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
       final docReference = querySnapshot.docs.first;
       final data = docReference.data();
 
+      // 1. ROUTE MONEY TO FUNDS DIALOG
       if (data['type'] == 'money') {
         Navigator.pop(context);
-        _showErrorSnackBar("Cannot verify money donations. Only physical items.");
+        _showFundActionDialog(docReference.reference, data);
         return;
       }
 
-      bool hasArrivedAtHubMilestone = false;
-      bool isArrivedAtHubDone = false;
+      // 2. STRICT COURIER RULES FOR ITEMS
+      bool isCourier = data['deliveryMethod'] == 'driver';
       bool isPickedUpDone = false;
+      bool isArrivedAtHubDone = false;
       bool isPledgeConfirmedDone = false;
       bool isReceived = false;
       bool isDistributed = false;
@@ -4543,10 +4545,7 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
 
       for (var m in milestones) {
         if (m['label'] == 'Picked Up & In Transit' && m['done'] == true) isPickedUpDone = true;
-        if (m['label'] == 'Arrived at NGO Hub') {
-          hasArrivedAtHubMilestone = true;
-          if (m['done'] == true) isArrivedAtHubDone = true;
-        }
+        if (m['label'] == 'Arrived at NGO Hub' && m['done'] == true) isArrivedAtHubDone = true;
         if (m['label'] == 'Pledge Confirmed' && m['done'] == true) isPledgeConfirmedDone = true;
         if (m['label'] == 'Drop-off Verified' && m['done'] == true) isReceived = true;
         if (m['label'] == 'Distributed' && m['done'] == true) isDistributed = true;
@@ -4558,27 +4557,25 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
         return;
       }
 
-      bool isReadyForVerification = false;
-      String errorMessage = "";
-
       if (!isReceived) {
-        // ---> THE STRICT COURIER RULE <---
-        if (hasArrivedAtHubMilestone) {
-          if (isPickedUpDone && isArrivedAtHubDone) {
-            isReadyForVerification = true;
-          } else {
-            if (!isPickedUpDone) errorMessage = "Verification failed: Courier hasn't picked this up.";
-            else if (!isArrivedAtHubDone) errorMessage = "Verification failed: Courier hasn't dropped this at the Hub.";
+        // --- STRICT LOGISTICS GUARD ---
+        if (isCourier) {
+          if (!isPickedUpDone) {
+            Navigator.pop(context);
+            _showErrorSnackBar("Verification failed: Courier hasn't picked this up from the donor yet.");
+            return;
+          } else if (!isArrivedAtHubDone) {
+            Navigator.pop(context);
+            _showErrorSnackBar("Verification failed: Courier hasn't dropped this at the NGO Hub yet.");
+            return;
           }
-        } else { // Self Drop-off
-          if (isPledgeConfirmedDone) isReadyForVerification = true;
-          else errorMessage = "Verification failed: Pledge not confirmed.";
-        }
-
-        if (!isReadyForVerification) {
-          Navigator.pop(context);
-          _showErrorSnackBar(errorMessage);
-          return;
+        } else {
+          // Self Drop-off Check
+          if (!isPledgeConfirmedDone) {
+            Navigator.pop(context);
+            _showErrorSnackBar("Verification failed: Pledge not confirmed.");
+            return;
+          }
         }
 
         Navigator.pop(context);
@@ -4600,7 +4597,7 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB))),
+      builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB))), // Hardcoded NGO Blue
     );
 
     try {
@@ -4614,53 +4611,53 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
 
       var doc = query.docs.first;
       var data = doc.data();
+
+      // ROUTE MONEY TO FUNDS DIALOG
+      if (data['type'] == 'money') {
+        if (mounted) Navigator.pop(context);
+        _showFundActionDialog(doc.reference, data);
+        return;
+      }
+
       List<dynamic> milestones = List.from(data['milestones'] ?? []);
 
-      bool hasArrivedAtHubMilestone = false;
-      bool isArrivedAtHubDone = false;
+      bool isCourier = data['deliveryMethod'] == 'driver';
       bool isPickedUpDone = false;
+      bool isArrivedAtHubDone = false;
       bool isPledgeConfirmedDone = false;
       bool isReceived = false;
       bool isDistributed = false;
 
       for (var m in milestones) {
         if (m['label'] == 'Picked Up & In Transit' && m['done'] == true) isPickedUpDone = true;
-        if (m['label'] == 'Arrived at NGO Hub') {
-          hasArrivedAtHubMilestone = true;
-          if (m['done'] == true) isArrivedAtHubDone = true;
-        }
+        if (m['label'] == 'Arrived at NGO Hub' && m['done'] == true) isArrivedAtHubDone = true;
         if (m['label'] == 'Pledge Confirmed' && m['done'] == true) isPledgeConfirmedDone = true;
         if (m['label'] == 'Drop-off Verified' && m['done'] == true) isReceived = true;
         if (m['label'] == 'Distributed' && m['done'] == true) isDistributed = true;
       }
 
-      if (mounted) Navigator.pop(context); // Close loading spinner
+      if (mounted) Navigator.pop(context);
 
       if (isDistributed) {
         _showErrorSnackBar("Action Denied: This donation has already been distributed.");
         return;
       }
 
-      bool isReadyForVerification = false;
-      String errorMessage = "";
-
       if (!isReceived) {
-        // ---> THE STRICT COURIER RULE <---
-        if (hasArrivedAtHubMilestone) {
-          if (isPickedUpDone && isArrivedAtHubDone) {
-            isReadyForVerification = true;
-          } else {
-            if (!isPickedUpDone) errorMessage = "Scan failed: Courier hasn't picked this up yet.";
-            else if (!isArrivedAtHubDone) errorMessage = "Scan failed: Courier hasn't dropped this at the Hub yet.";
+        // --- STRICT LOGISTICS GUARD ---
+        if (isCourier) {
+          if (!isPickedUpDone) {
+            _showErrorSnackBar("Scan failed: Courier hasn't picked this up yet.");
+            return;
+          } else if (!isArrivedAtHubDone) {
+            _showErrorSnackBar("Scan failed: Courier hasn't dropped this at the Hub yet.");
+            return;
           }
-        } else { // Self Drop-off
-          if (isPledgeConfirmedDone) isReadyForVerification = true;
-          else errorMessage = "Scan failed: Pledge not confirmed.";
-        }
-
-        if (!isReadyForVerification) {
-          _showErrorSnackBar(errorMessage);
-          return;
+        } else {
+          if (!isPledgeConfirmedDone) {
+            _showErrorSnackBar("Scan failed: Pledge not confirmed.");
+            return;
+          }
         }
 
         _showNGOActionDialog(doc.reference, data, milestones, 'receive');
@@ -4673,6 +4670,109 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
     }
   }
 
+  // ==========================================
+  // NEW: FUND VERIFICATION DIALOG
+  // ==========================================
+  void _showFundActionDialog(DocumentReference docRef, Map<String, dynamic> data) {
+    List<dynamic> milestones = List.from(data['milestones'] ?? []);
+    bool isAlreadyDistributed = false;
+
+    for (var m in milestones) {
+      if (m['label'] == 'Distributed' && m['done'] == true) isAlreadyDistributed = true;
+    }
+
+    if (isAlreadyDistributed) {
+      _showErrorSnackBar("Action Denied: These funds have already been marked as distributed.");
+      return;
+    }
+
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          bool isProcessing = false;
+          return StatefulBuilder(
+              builder: (context, setState) {
+                return Dialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    backgroundColor: Colors.white,
+                    child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(color: kEmerald.withOpacity(0.1), shape: BoxShape.circle),
+                                child: const Icon(LucideIcons.banknote, color: kEmerald, size: 40),
+                              ),
+                              const SizedBox(height: 16),
+                              Text("Log Fund Disbursement", style: GoogleFonts.inter(fontWeight: FontWeight.w900, fontSize: 22, color: const Color(0xFF1E293B))),
+                              const SizedBox(height: 8),
+                              Text("RM ${(data['amount'] ?? 0.0).toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: kEmerald)),
+                              Text("Target: ${data['target']}", style: const TextStyle(color: Colors.grey)),
+                              const Divider(height: 32),
+                              const Text("Confirm that this monetary donation is officially being distributed to the beneficiaries.", textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF64748B), fontSize: 13, height: 1.5)),
+                              const SizedBox(height: 24),
+                              SizedBox(
+                                  width: double.infinity,
+                                  height: 50,
+                                  child: ElevatedButton.icon(
+                                      icon: const Icon(LucideIcons.checkCircle),
+                                      label: const Text("Confirm Disbursement", style: TextStyle(fontWeight: FontWeight.bold)),
+                                      style: ElevatedButton.styleFrom(
+                                          backgroundColor: kEmerald,
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                                      ),
+                                      onPressed: isProcessing ? null : () async {
+                                        setState(() => isProcessing = true);
+                                        try {
+                                          String todayDate = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
+                                          for (var m in milestones) {
+                                            if (m['label'] == 'Distributed') {
+                                              m['done'] = true;
+                                              m['date'] = todayDate;
+                                            }
+                                          }
+                                          await docRef.update({
+                                            'milestones': milestones,
+                                            'status': 'Funds Distributed'
+                                          });
+
+                                          await creditImpactIfMilestonesComplete(docRef);
+
+                                          if (context.mounted) {
+                                            Navigator.pop(context);
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text("Success! Funds distributed to beneficiaries."),
+                                                  backgroundColor: kEmerald,
+                                                  behavior: SnackBarBehavior.floating,
+                                                )
+                                            );
+                                          }
+                                        } catch (e) {
+                                          setState(() => isProcessing = false);
+                                          _showErrorSnackBar("Error: $e");
+                                        }
+                                      }
+                                  )
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                  onPressed: isProcessing ? null : () => Navigator.pop(context),
+                                  child: const Text("Cancel", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))
+                              )
+                            ]
+                        )
+                    )
+                );
+              }
+          );
+        }
+    );
+  }
     // Helper function to show errors nicely
     void _showErrorSnackBar(String message) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -7983,31 +8083,27 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
       }
 
       // 3. BUILD THE "APP MANUAL"
-      // Conditionally build triggers based on role
       String actionTriggers = "If the user wants to top up their wallet, include this tag: [ACTION: TOP_UP]";
 
       if (widget.role == 'ngo') {
-        actionTriggers += "\nIf the user explicitly asks you to verify a drop off, scan a QR code, or enter a receipt ID, you MUST include this exact tag at the end of your message: [ACTION: VERIFY_RECEIPT]";
+        actionTriggers += "\nIf the user explicitly asks you to verify a physical drop off or scan an item, you MUST include this exact tag: [ACTION: VERIFY_RECEIPT]";
+        actionTriggers += "\nIf the user explicitly asks you to verify a money donation or fund disbursement, you MUST include this exact tag: [ACTION: VERIFY_FUNDS]";
       } else {
-        actionTriggers += "\nIf the user asks to verify a drop off or scan a QR code, politely inform them that only authorized NGOs can perform this action. Do NOT include any action tags.";
+        actionTriggers += "\nIf the user asks to verify a drop off, politely inform them that only authorized NGOs can perform this action. Do NOT include any action tags.";
       }
 
       String appManual = """
       --- APP MANUAL & CAPABILITIES ---
-      You are the official KitaCare AI integrated directly into the Flutter app. You have access to the user's secure data.
+      You are the official KitaCare AI.
 
       USER LIVE PROFILE:
       - Name: ${userCtx['name']}
       - Role: ${widget.role.toUpperCase()}
-      - Wallet Balance: RM ${userCtx['balance']}
-      - Philanthropy Tier: ${userCtx['tier']}
-      - Total Impact Points: ${userCtx['impact']}
 
-      HOW TO USE THE APP (Explain these exactly if asked):
-      - How to top-up wallet: "Go to your Dashboard (first tab at the bottom), find the KitaCare Wallet section, and tap the 'Top Up Funds' button."
-      - How to donate items or money: "Go to the Relief Map tab, tap on any location marker, and click the green 'Contribute Now' button."
-      - How to see philanthropy tier: "Your current tier is ${userCtx['tier']}. You can view your full journey and download tax certificates on the 'My Impact' tab."
-      ${widget.role == 'ngo' ? '- How to verify drop-off (NGO only): "I can open the scanner or manual entry for you right here in the chat!"' : ''}
+      HOW TO USE THE APP:
+      - How to top-up wallet: "Go to your Dashboard, find the KitaCare Wallet section, and tap 'Top Up Funds'."
+      - How to verify physical item drop-off (NGO only): "I can open the item scanner or manual entry for you right here in the chat!"
+      - How to verify money/fund disbursement (NGO only): "I can open the secure fund verification terminal for you right here!"
       
       ACTION TRIGGERS (Crucial!):
       $actionTriggers
@@ -8060,30 +8156,21 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
 
   // --- UI ACTION INTERCEPTION HANDLERS ---
   void _executeAction(String action) async {
-    // GUARD: Ensure only NGOs can use scanner/manual entry
-    if ((action == 'SCAN_QR' || action == 'MANUAL_ENTRY') && widget.role != 'ngo') {
-      _showErrorSnackBar("Access Denied: Only NGOs can verify drop-offs.");
+    if ((action == 'SCAN_QR' || action == 'MANUAL_ENTRY' || action == 'VERIFY_FUNDS') && widget.role != 'ngo') {
+      _showErrorSnackBar("Access Denied: Only NGOs can verify donations.");
       return;
     }
 
     if (action == 'SCAN_QR') {
-      final scannedCode = await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const QRScannerScreen()),
-      );
-      // Wait for scanner to return code, then process it instantly
-      if (scannedCode != null && scannedCode is String) {
-        _processNGOQrScan(scannedCode);
-      }
+      final scannedCode = await Navigator.push(context, MaterialPageRoute(builder: (context) => const QRScannerScreen()));
+      if (scannedCode != null && scannedCode is String) _processNGOQrScan(scannedCode);
     } else if (action == 'MANUAL_ENTRY') {
       _showManualEntryDialog(context);
+    } else if (action == 'VERIFY_FUNDS') {
+      _showFundManualEntryDialog(context); // NEW: Opens the Green Money Dialog
     } else if (action == 'TOP_UP') {
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("Navigating... Please go to your Dashboard tab to Top Up."),
-            backgroundColor: widget.role == 'ngo' ? kBlue : kEmerald,
-            behavior: SnackBarBehavior.floating,
-          )
+          SnackBar(content: const Text("Navigating... Please go to your Dashboard tab to Top Up."), backgroundColor: widget.role == 'ngo' ? kBlue : kEmerald)
       );
     }
   }
@@ -8481,17 +8568,18 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
                 final isAi = msg['role'] == 'ai';
 
                 // --- ACTION INTERCEPTION LOGIC (DUAL BUTTONS) ---
+                // --- ACTION INTERCEPTION LOGIC (DUAL BUTTONS) ---
                 String displayText = msg['text'];
 
-                // ADD `&& isNgo` TO THIS LINE:
                 bool hasVerifyAction = (displayText.contains('[ACTION: VERIFY_RECEIPT]') || displayText.contains('[ACTION: SCAN_QR]')) && isNgo;
-
+                bool hasVerifyFundsAction = displayText.contains('[ACTION: VERIFY_FUNDS]') && isNgo; // NEW TRIGGER
                 bool hasTopUpAction = displayText.contains('[ACTION: TOP_UP]');
 
-                // Clean the text so the user doesn't see the raw tags
+                // Clean the text
                 displayText = displayText
                     .replaceAll('[ACTION: VERIFY_RECEIPT]', '')
                     .replaceAll('[ACTION: SCAN_QR]', '')
+                    .replaceAll('[ACTION: VERIFY_FUNDS]', '') // Hide new tag
                     .replaceAll('[ACTION: TOP_UP]', '')
                     .trim();
 
@@ -8558,6 +8646,19 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
                             ],
                           )
                         ],
+                        if (hasVerifyFundsAction) ...[
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                            onPressed: () => _executeAction('VERIFY_FUNDS'),
+                            icon: const Icon(LucideIcons.banknote, size: 16),
+                            label: const Text("Verify Money Receipt"),
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: kEmerald, // Green for money
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                            ),
+                          )
+                        ],
 
                         if (hasTopUpAction) ...[
                           const SizedBox(height: 8),
@@ -8617,6 +8718,215 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
         ],
       ),
     );
+  }
+
+  // ==========================================
+  // SPECIFIC FUND VERIFICATION DIALOG
+  // ==========================================
+  void _showFundManualEntryDialog(BuildContext context) {
+    final TextEditingController idController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          backgroundColor: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: kEmerald.withOpacity(0.1), shape: BoxShape.circle),
+                  child: const Icon(LucideIcons.banknote, color: kEmerald, size: 32),
+                ),
+                const SizedBox(height: 16),
+                Text("Verify Funds", style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 20)),
+                const SizedBox(height: 8),
+                const Text("Type the donor's monetary receipt ID exactly as it appears.", textAlign: TextAlign.center, style: TextStyle(color: Colors.black54, fontSize: 13)),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: idController,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    hintText: "e.g. KC-12345",
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kEmerald, width: 2)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final enteredId = idController.text.trim();
+                      if (enteredId.isNotEmpty) {
+                        Navigator.pop(context);
+                        _verifyFundReceiptId(enteredId); // CALL THE MONEY LOGIC
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(backgroundColor: kEmerald, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    child: const Text("Confirm Disbursement", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ==========================================
+  // AI TAB: FINAL FUND CONFIRMATION DIALOG
+  // ==========================================
+  void _showFundActionDialog(DocumentReference docRef, Map<String, dynamic> data) {
+    List<dynamic> milestones = List.from(data['milestones'] ?? []);
+
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          bool isProcessing = false;
+          return StatefulBuilder(
+              builder: (context, setState) {
+                return Dialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    backgroundColor: Colors.white,
+                    child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(color: kEmerald.withOpacity(0.1), shape: BoxShape.circle),
+                                child: const Icon(LucideIcons.banknote, color: kEmerald, size: 40),
+                              ),
+                              const SizedBox(height: 16),
+                              Text("Log Fund Disbursement", style: GoogleFonts.inter(fontWeight: FontWeight.w900, fontSize: 22, color: const Color(0xFF1E293B))),
+                              const SizedBox(height: 8),
+                              Text("RM ${(data['amount'] ?? 0.0).toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: kEmerald)),
+                              Text("Target: ${data['target']}", style: const TextStyle(color: Colors.grey)),
+                              const Divider(height: 32),
+                              const Text("Confirm that this monetary donation is officially being distributed to the beneficiaries.", textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF64748B), fontSize: 13, height: 1.5)),
+                              const SizedBox(height: 24),
+                              SizedBox(
+                                  width: double.infinity,
+                                  height: 50,
+                                  child: ElevatedButton.icon(
+                                      icon: const Icon(LucideIcons.checkCircle),
+                                      label: const Text("Confirm Disbursement", style: TextStyle(fontWeight: FontWeight.bold)),
+                                      style: ElevatedButton.styleFrom(
+                                          backgroundColor: kEmerald,
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                                      ),
+                                      onPressed: isProcessing ? null : () async {
+                                        setState(() => isProcessing = true);
+                                        try {
+                                          String todayDate = DateFormat('dd MMM yyyy, h:mm a').format(DateTime.now());
+                                          for (var m in milestones) {
+                                            if (m['label'] == 'Distributed') {
+                                              m['done'] = true;
+                                              m['date'] = todayDate;
+                                            }
+                                          }
+                                          await docRef.update({
+                                            'milestones': milestones,
+                                            'status': 'Funds Distributed'
+                                          });
+
+                                          // Give Donor Impact Points!
+                                          await creditImpactIfMilestonesComplete(docRef);
+
+                                          if (context.mounted) {
+                                            Navigator.pop(context);
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text("Success! Funds distributed to beneficiaries."),
+                                                  backgroundColor: kEmerald,
+                                                  behavior: SnackBarBehavior.floating,
+                                                )
+                                            );
+                                          }
+                                        } catch (e) {
+                                          setState(() => isProcessing = false);
+                                          _showErrorSnackBar("Error: $e");
+                                        }
+                                      }
+                                  )
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                  onPressed: isProcessing ? null : () => Navigator.pop(context),
+                                  child: const Text("Cancel", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))
+                              )
+                            ]
+                        )
+                    )
+                );
+              }
+          );
+        }
+    );
+  }
+
+  Future<void> _verifyFundReceiptId(String receiptId) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator(color: kEmerald)),
+    );
+
+    try {
+      var querySnapshot = await FirebaseFirestore.instance.collectionGroup('donations').where('id', isEqualTo: receiptId).limit(1).get();
+
+      if (querySnapshot.docs.isEmpty) {
+        Navigator.pop(context);
+        _showErrorSnackBar("Receipt ID not found in the system.");
+        return;
+      }
+
+      final docReference = querySnapshot.docs.first;
+      final data = docReference.data();
+
+      // BLOCK ITEMS FROM ENTERING THE MONEY SCANNER
+      if (data['type'] != 'money') {
+        Navigator.pop(context);
+        _showErrorSnackBar("This receipt is for a physical item. Please use the Item Verification tool instead.");
+        return;
+      }
+
+      bool isAlreadyDistributed = false;
+      List<dynamic> milestones = List.from(data['milestones'] ?? []);
+
+      for (var m in milestones) {
+        if (m['label'] == 'Distributed' && m['done'] == true) isAlreadyDistributed = true;
+      }
+
+      Navigator.pop(context); // Close Loading
+
+      if (isAlreadyDistributed) {
+        _showErrorSnackBar("Action Denied: These funds have already been marked as distributed.");
+        return;
+      }
+
+      // SHOW CONFIRMATION DIALOG (Calling the method we added in the previous steps)
+      _showFundActionDialog(docReference.reference, data);
+
+    } catch (e) {
+      Navigator.pop(context);
+      _showErrorSnackBar("Error: ${e.toString()}");
+    }
   }
 }
 
