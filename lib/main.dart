@@ -2914,20 +2914,23 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text("Request Physical Goods",
-                                        style: GoogleFonts.inter(
-                                            color: Colors.white,
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold)),
-                                    const Text("POST TO DONOR MAP",
-                                        style: TextStyle(color: Colors.white70,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: 1.0)),
-                                  ],
+                                // FIX: Wrapped in Expanded to prevent long text from pushing the 'X' off screen
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text("Request Physical Goods",
+                                          style: GoogleFonts.inter(
+                                              color: Colors.white,
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold)),
+                                      const Text("POST TO DONOR MAP",
+                                          style: TextStyle(color: Colors.white70,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w900,
+                                              letterSpacing: 1.0)),
+                                    ],
+                                  ),
                                 ),
                                 IconButton(
                                   onPressed: () {
@@ -2944,413 +2947,414 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
                           ),
 
                           // Form Body
-                          Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
+                          // FIX: Added Flexible and SingleChildScrollView so it scrolls when the keyboard pops up!
+                          Flexible(
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
 
-                                // --- TARGET LOCATION DROPDOWN ---
-                                _buildFormLabel(
-                                    "TARGET LOCATION (ACTIVE ZONES)"),
-                                FutureBuilder<List<String>>(
-                                    future: locationsFuture,
-                                    builder: (context, snapshot) {
-                                      if (snapshot.connectionState ==
-                                          ConnectionState.waiting) {
-                                        return Container(
-                                          padding: const EdgeInsets.all(16),
-                                          decoration: BoxDecoration(
-                                              border: Border.all(
-                                                  color: kSlate200),
-                                              borderRadius: BorderRadius
-                                                  .circular(12)),
-                                          child: const Row(
-                                            children: [
-                                              SizedBox(width: 16,
-                                                  height: 16,
-                                                  child: CircularProgressIndicator(
-                                                      strokeWidth: 2)),
-                                              SizedBox(width: 12),
-                                              Text("Loading active zones...",
-                                                  style: TextStyle(
-                                                      color: kSlate500,
-                                                      fontSize: 14))
-                                            ],
-                                          ),
-                                        );
-                                      }
-
-                                      List<String> locations = snapshot.data ??
-                                          [];
-
-                                      if (locations.isEmpty) {
-                                        return Container(
-                                          padding: const EdgeInsets.all(16),
-                                          decoration: BoxDecoration(
-                                              color: Colors.red.shade50,
-                                              borderRadius: BorderRadius
-                                                  .circular(12)),
-                                          child: const Text(
-                                              "No active zones found. Please publish a Field Report first.",
-                                              style: TextStyle(
-                                                  color: Colors.red,
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.bold)),
-                                        );
-                                      }
-
-                                      if (selectedLocation == null ||
-                                          !locations.contains(
-                                              selectedLocation)) {
-                                        selectedLocation = locations.first;
-                                      }
-
-                                      return Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 16),
-                                        decoration: BoxDecoration(
-                                            border: Border.all(
-                                                color: kSlate200),
-                                            borderRadius: BorderRadius.circular(
-                                                12),
-                                            color: const Color(0xFFF8FAFC)
-                                        ),
-                                        child: DropdownButtonHideUnderline(
-                                          child: DropdownButton<String>(
-                                            value: selectedLocation,
-                                            isExpanded: true,
-                                            icon: const Icon(
-                                                LucideIcons.chevronDown,
-                                                size: 16),
-                                            items: locations.map((loc) =>
-                                                DropdownMenuItem(
-                                                    value: loc,
-                                                    child: Text(loc,
-                                                        style: const TextStyle(
-                                                            fontSize: 14,
-                                                            fontWeight: FontWeight
-                                                                .bold))
-                                                )).toList(),
-                                            onChanged: (val) {
-                                              setState(() {
-                                                selectedLocation = val!;
-                                                errorMessage = null;
-                                              });
-                                            },
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                ),
-                                const SizedBox(height: 16),
-
-                                _buildFormLabel("CATEGORY"),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 16),
-                                  decoration: BoxDecoration(
-                                      border: Border.all(color: kSlate200),
-                                      borderRadius: BorderRadius.circular(12),
-                                      color: const Color(0xFFF8FAFC)
-                                  ),
-                                  child: DropdownButtonHideUnderline(
-                                    child: DropdownButton<String>(
-                                      value: selectedCategory,
-                                      isExpanded: true,
-                                      icon: const Icon(
-                                          LucideIcons.chevronDown, size: 16),
-                                      items: [
-                                        "Education",
-                                        "Food Security",
-                                        "Medical Aid",
-                                        "Clothing",
-                                        "Disaster Relief"
-                                      ]
-                                          .map((c) =>
-                                          DropdownMenuItem(value: c,
-                                              child: Text(c,
-                                                  style: const TextStyle(
-                                                      fontSize: 14)))).toList(),
-                                      onChanged: (val) {
-                                        setState(() {
-                                          selectedCategory = val!;
-                                          errorMessage = null;
-                                        });
-                                      },
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-
-                                _buildFormLabel("SPECIFIC ITEM"),
-                                TextField(
-                                  controller: itemCtrl,
-                                  onChanged: (_) =>
-                                      setState(() => errorMessage = null),
-                                  decoration: InputDecoration(
-                                    hintText: "e.g. Sejarah Books, Blankets...",
-                                    hintStyle: const TextStyle(
-                                        color: kSlate400, fontSize: 14),
-                                    border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                            color: kSlate200)),
-                                    enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                            color: kSlate200)),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 16),
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment
-                                            .start,
-                                        children: [
-                                          _buildFormLabel("URGENCY"),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 16, vertical: 2),
+                                  // --- TARGET LOCATION DROPDOWN ---
+                                  _buildFormLabel(
+                                      "TARGET LOCATION (ACTIVE ZONES)"),
+                                  FutureBuilder<List<String>>(
+                                      future: locationsFuture,
+                                      builder: (context, snapshot) {
+                                        if (snapshot.connectionState ==
+                                            ConnectionState.waiting) {
+                                          return Container(
+                                            padding: const EdgeInsets.all(16),
                                             decoration: BoxDecoration(
                                                 border: Border.all(
                                                     color: kSlate200),
                                                 borderRadius: BorderRadius
-                                                    .circular(12),
-                                                color: const Color(0xFFF8FAFC)),
-                                            child: DropdownButtonHideUnderline(
-                                              child: DropdownButton<String>(
-                                                value: selectedUrgency,
-                                                isExpanded: true,
-                                                icon: const Icon(
-                                                    LucideIcons.chevronDown,
-                                                    size: 16),
-                                                items: [
-                                                  "Medium",
-                                                  "High",
-                                                  "Critical"
-                                                ]
-                                                    .map((c) =>
-                                                    DropdownMenuItem(value: c,
-                                                        child: Text(c,
-                                                            style: const TextStyle(
-                                                                fontSize: 14))))
-                                                    .toList(),
-                                                onChanged: (val) =>
-                                                    setState(() =>
-                                                    selectedUrgency = val!),
-                                              ),
+                                                    .circular(12)),
+                                            child: const Row(
+                                              children: [
+                                                SizedBox(width: 16,
+                                                    height: 16,
+                                                    child: CircularProgressIndicator(
+                                                        strokeWidth: 2)),
+                                                SizedBox(width: 12),
+                                                Text("Loading active zones...",
+                                                    style: TextStyle(
+                                                        color: kSlate500,
+                                                        fontSize: 14))
+                                              ],
+                                            ),
+                                          );
+                                        }
+
+                                        List<String> locations = snapshot.data ??
+                                            [];
+
+                                        if (locations.isEmpty) {
+                                          return Container(
+                                            padding: const EdgeInsets.all(16),
+                                            decoration: BoxDecoration(
+                                                color: Colors.red.shade50,
+                                                borderRadius: BorderRadius
+                                                    .circular(12)),
+                                            child: const Text(
+                                                "No active zones found. Please publish a Field Report first.",
+                                                style: TextStyle(
+                                                    color: Colors.red,
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.bold)),
+                                          );
+                                        }
+
+                                        if (selectedLocation == null ||
+                                            !locations.contains(
+                                                selectedLocation)) {
+                                          selectedLocation = locations.first;
+                                        }
+
+                                        return Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 16),
+                                          decoration: BoxDecoration(
+                                              border: Border.all(
+                                                  color: kSlate200),
+                                              borderRadius: BorderRadius.circular(
+                                                  12),
+                                              color: const Color(0xFFF8FAFC)
+                                          ),
+                                          child: DropdownButtonHideUnderline(
+                                            child: DropdownButton<String>(
+                                              value: selectedLocation,
+                                              isExpanded: true,
+                                              icon: const Icon(
+                                                  LucideIcons.chevronDown,
+                                                  size: 16),
+                                              items: locations.map((loc) =>
+                                                  DropdownMenuItem(
+                                                      value: loc,
+                                                      child: Text(loc,
+                                                          style: const TextStyle(
+                                                              fontSize: 14,
+                                                              fontWeight: FontWeight
+                                                                  .bold))
+                                                  )).toList(),
+                                              onChanged: (val) {
+                                                setState(() {
+                                                  selectedLocation = val!;
+                                                  errorMessage = null;
+                                                });
+                                              },
                                             ),
                                           ),
+                                        );
+                                      }
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  _buildFormLabel("CATEGORY"),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16),
+                                    decoration: BoxDecoration(
+                                        border: Border.all(color: kSlate200),
+                                        borderRadius: BorderRadius.circular(12),
+                                        color: const Color(0xFFF8FAFC)
+                                    ),
+                                    child: DropdownButtonHideUnderline(
+                                      child: DropdownButton<String>(
+                                        value: selectedCategory,
+                                        isExpanded: true,
+                                        icon: const Icon(
+                                            LucideIcons.chevronDown, size: 16),
+                                        items: [
+                                          "Education",
+                                          "Food Security",
+                                          "Medical Aid",
+                                          "Clothing",
+                                          "Disaster Relief"
+                                        ]
+                                            .map((c) =>
+                                            DropdownMenuItem(value: c,
+                                                child: Text(c,
+                                                    style: const TextStyle(
+                                                        fontSize: 14)))).toList(),
+                                        onChanged: (val) {
+                                          setState(() {
+                                            selectedCategory = val!;
+                                            errorMessage = null;
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  _buildFormLabel("SPECIFIC ITEM"),
+                                  TextField(
+                                    controller: itemCtrl,
+                                    onChanged: (_) =>
+                                        setState(() => errorMessage = null),
+                                    decoration: InputDecoration(
+                                      hintText: "e.g. Sejarah Books, Blankets...",
+                                      hintStyle: const TextStyle(
+                                          color: kSlate400, fontSize: 14),
+                                      border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: const BorderSide(
+                                              color: kSlate200)),
+                                      enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: const BorderSide(
+                                              color: kSlate200)),
+                                      contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 16, vertical: 16),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment
+                                              .start,
+                                          children: [
+                                            _buildFormLabel("URGENCY"),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                  horizontal: 16, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                  border: Border.all(
+                                                      color: kSlate200),
+                                                  borderRadius: BorderRadius
+                                                      .circular(12),
+                                                  color: const Color(0xFFF8FAFC)),
+                                              child: DropdownButtonHideUnderline(
+                                                child: DropdownButton<String>(
+                                                  value: selectedUrgency,
+                                                  isExpanded: true,
+                                                  icon: const Icon(
+                                                      LucideIcons.chevronDown,
+                                                      size: 16),
+                                                  items: [
+                                                    "Medium",
+                                                    "High",
+                                                    "Critical"
+                                                  ]
+                                                      .map((c) =>
+                                                      DropdownMenuItem(value: c,
+                                                          child: Text(c,
+                                                              style: const TextStyle(
+                                                                  fontSize: 14))))
+                                                      .toList(),
+                                                  onChanged: (val) =>
+                                                      setState(() =>
+                                                      selectedUrgency = val!),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 24),
+
+                                  // --- INLINE ERROR MESSAGE ---
+                                  if (errorMessage != null)
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      margin: const EdgeInsets.only(bottom: 16),
+                                      decoration: BoxDecoration(
+                                          color: Colors.red.shade50,
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                              color: Colors.red.shade200)
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(LucideIcons.alertCircle,
+                                              color: Colors.red, size: 16),
+                                          const SizedBox(width: 8),
+                                          Expanded(child: Text(errorMessage!,
+                                              style: const TextStyle(
+                                                  color: Colors.red,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold))),
                                         ],
                                       ),
                                     ),
-                                  ],
-                                ),
-                                const SizedBox(height: 24),
+                                  // ----------------------------
 
-                                // --- INLINE ERROR MESSAGE ---
-                                if (errorMessage != null)
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    margin: const EdgeInsets.only(bottom: 16),
-                                    decoration: BoxDecoration(
-                                        color: Colors.red.shade50,
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                            color: Colors.red.shade200)
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        const Icon(LucideIcons.alertCircle,
-                                            color: Colors.red, size: 16),
-                                        const SizedBox(width: 8),
-                                        Expanded(child: Text(errorMessage!,
-                                            style: const TextStyle(
-                                                color: Colors.red,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.bold))),
-                                      ],
-                                    ),
-                                  ),
-                                // ----------------------------
-
-                                // Submit Button
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: 50,
-                                  child: ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                        backgroundColor: kBlue,
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                                12)),
-                                        elevation: 0
-                                    ),
-                                    onPressed: isSaving ? null : () async {
-                                      // 1. Validation
-                                      if (selectedLocation == null) {
-                                        setState(() =>
-                                        errorMessage =
-                                        "Please select a target location.");
-                                        return;
-                                      }
-                                      if (itemCtrl.text
-                                          .trim()
-                                          .isEmpty) {
-                                        setState(() =>
-                                        errorMessage =
-                                        "Please fill in the item name.");
-                                        return;
-                                      }
-
-                                      setState(() {
-                                        isSaving = true;
-                                        errorMessage = null;
-                                      });
-
-                                      try {
-                                        // 1. Push to NGO's personal inventory list (For auditing)
-                                        await FirebaseFirestore.instance
-                                            .collection(
-                                            'ngo_inventory_requests').add({
-                                          'ngoId': FirebaseAuth.instance
-                                              .currentUser?.uid,
-                                          'location': selectedLocation,
-                                          'category': selectedCategory,
-                                          'item': itemCtrl.text.trim(),
-                                          'quantity': int.tryParse(
-                                              qtyCtrl.text.trim()) ?? 1,
-                                          'urgency': selectedUrgency,
-                                          'timestamp': FieldValue
-                                              .serverTimestamp(),
-                                        });
-
-                                        // ==========================================
-                                        // 2. THE FIX: PROPER DEEP COPY UPDATE TO FIRESTORE
-                                        // ==========================================
-                                        DocumentReference cacheRef = FirebaseFirestore
-                                            .instance
-                                            .collection('relief_cache')
-                                            .doc('current_status');
-                                        DocumentSnapshot cacheSnap = await cacheRef
-                                            .get();
-
-                                        if (cacheSnap.exists) {
-                                          List<dynamic> results = List.from(
-                                              cacheSnap['results'] ?? []);
-
-                                          // Find the zone matching the location
-                                          int zoneIndex = results.indexWhere((
-                                              r) =>
-                                          r['location'] == selectedLocation);
-
-                                          if (zoneIndex != -1) {
-                                            // Map UI Category to JSON short keys used by AI
-                                            String catKey = 'rel';
-                                            if (selectedCategory ==
-                                                'Food Security')
-                                              catKey = 'food';
-                                            if (selectedCategory ==
-                                                'Medical Aid') catKey = 'med';
-                                            if (selectedCategory == 'Education')
-                                              catKey = 'edu';
-                                            if (selectedCategory == 'Clothing')
-                                              catKey = 'cloth';
-
-                                            // --- DEEP COPY OF THE SPECIFIC ZONE ---
-                                            Map<String,
-                                                dynamic> targetZone = Map<
-                                                String,
-                                                dynamic>.from(
-                                                results[zoneIndex]);
-
-                                            // --- UPDATE NEEDED_ITEMS MAP ---
-                                            Map<String,
-                                                dynamic> neededItems = Map<
-                                                String,
-                                                dynamic>.from(
-                                                targetZone['needed_items'] ??
-                                                    {});
-                                            List<dynamic> itemsList = List.from(
-                                                neededItems[catKey] ?? []);
-
-                                            // Remove the generic placeholder if it exists!
-                                            itemsList.removeWhere((item) =>
-                                            item.toString() == "Blanket");
-
-                                            // Add the specific item (e.g. "sejarah books")
-                                            itemsList.add(itemCtrl.text.trim());
-                                            neededItems[catKey] = itemsList;
-                                            targetZone['needed_items'] =
-                                                neededItems; // Put map back in zone
-
-                                            // --- UPDATE SEVERITIES MAP ---
-                                            Map<String,
-                                                dynamic> severities = Map<
-                                                String,
-                                                dynamic>.from(
-                                                targetZone['severities'] ?? {});
-                                            severities[catKey] =
-                                                selectedUrgency;
-                                            targetZone['severities'] =
-                                                severities; // Put map back in zone
-
-                                            // Replace the old zone map with our updated zone map
-                                            results[zoneIndex] = targetZone;
-
-                                            // Save the fully updated array back to cache
-                                            await cacheRef.update(
-                                                {'results': results});
-                                          }
-                                        }
-
-                                        // Close Dialog & Show Success
-                                        if (context.mounted) {
-                                          Navigator.pop(context);
-                                          ScaffoldMessenger
-                                              .of(context)
-                                              .showSnackBar(const SnackBar(
-                                              content: Text(
-                                                  "Item successfully requested & published to the map!"),
-                                              backgroundColor: Colors.green
-                                          ));
-                                        }
-                                      } catch (e) {
-                                        setState(() {
-                                          isSaving = false;
+                                  // Submit Button
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 50,
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                          backgroundColor: kBlue,
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(
+                                                  12)),
+                                          elevation: 0
+                                      ),
+                                      onPressed: isSaving ? null : () async {
+                                        // 1. Validation
+                                        if (selectedLocation == null) {
+                                          setState(() =>
                                           errorMessage =
-                                          "Error publishing request: $e";
+                                          "Please select a target location.");
+                                          return;
+                                        }
+                                        if (itemCtrl.text
+                                            .trim()
+                                            .isEmpty) {
+                                          setState(() =>
+                                          errorMessage =
+                                          "Please fill in the item name.");
+                                          return;
+                                        }
+
+                                        setState(() {
+                                          isSaving = true;
+                                          errorMessage = null;
                                         });
-                                      }
-                                    },
-                                    child: isSaving
-                                        ? const SizedBox(width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2))
-                                        : const Row(
-                                      mainAxisAlignment: MainAxisAlignment
-                                          .center,
-                                      children: [
-                                        Text("Publish Item Request",
-                                            style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 16)),
-                                        SizedBox(width: 8),
-                                        Icon(LucideIcons.arrowRight, size: 18)
-                                      ],
+
+                                        try {
+                                          // 1. Push to NGO's personal inventory list (For auditing)
+                                          await FirebaseFirestore.instance
+                                              .collection(
+                                              'ngo_inventory_requests').add({
+                                            'ngoId': FirebaseAuth.instance
+                                                .currentUser?.uid,
+                                            'location': selectedLocation,
+                                            'category': selectedCategory,
+                                            'item': itemCtrl.text.trim(),
+                                            'quantity': int.tryParse(
+                                                qtyCtrl.text.trim()) ?? 1,
+                                            'urgency': selectedUrgency,
+                                            'timestamp': FieldValue
+                                                .serverTimestamp(),
+                                          });
+
+                                          // 2. PROPER DEEP COPY UPDATE TO FIRESTORE
+                                          DocumentReference cacheRef = FirebaseFirestore
+                                              .instance
+                                              .collection('relief_cache')
+                                              .doc('current_status');
+                                          DocumentSnapshot cacheSnap = await cacheRef
+                                              .get();
+
+                                          if (cacheSnap.exists) {
+                                            List<dynamic> results = List.from(
+                                                cacheSnap['results'] ?? []);
+
+                                            // Find the zone matching the location
+                                            int zoneIndex = results.indexWhere((
+                                                r) =>
+                                            r['location'] == selectedLocation);
+
+                                            if (zoneIndex != -1) {
+                                              // Map UI Category to JSON short keys used by AI
+                                              String catKey = 'rel';
+                                              if (selectedCategory ==
+                                                  'Food Security')
+                                                catKey = 'food';
+                                              if (selectedCategory ==
+                                                  'Medical Aid') catKey = 'med';
+                                              if (selectedCategory == 'Education')
+                                                catKey = 'edu';
+                                              if (selectedCategory == 'Clothing')
+                                                catKey = 'cloth';
+
+                                              // --- DEEP COPY OF THE SPECIFIC ZONE ---
+                                              Map<String,
+                                                  dynamic> targetZone = Map<
+                                                  String,
+                                                  dynamic>.from(
+                                                  results[zoneIndex]);
+
+                                              // --- UPDATE NEEDED_ITEMS MAP ---
+                                              Map<String,
+                                                  dynamic> neededItems = Map<
+                                                  String,
+                                                  dynamic>.from(
+                                                  targetZone['needed_items'] ??
+                                                      {});
+                                              List<dynamic> itemsList = List.from(
+                                                  neededItems[catKey] ?? []);
+
+                                              // Remove the generic placeholder if it exists!
+                                              itemsList.removeWhere((item) =>
+                                              item.toString() == "Blanket");
+
+                                              // Add the specific item (e.g. "sejarah books")
+                                              itemsList.add(itemCtrl.text.trim());
+                                              neededItems[catKey] = itemsList;
+                                              targetZone['needed_items'] =
+                                                  neededItems; // Put map back in zone
+
+                                              // --- UPDATE SEVERITIES MAP ---
+                                              Map<String,
+                                                  dynamic> severities = Map<
+                                                  String,
+                                                  dynamic>.from(
+                                                  targetZone['severities'] ?? {});
+                                              severities[catKey] =
+                                                  selectedUrgency;
+                                              targetZone['severities'] =
+                                                  severities; // Put map back in zone
+
+                                              // Replace the old zone map with our updated zone map
+                                              results[zoneIndex] = targetZone;
+
+                                              // Save the fully updated array back to cache
+                                              await cacheRef.update(
+                                                  {'results': results});
+                                            }
+                                          }
+
+                                          // Close Dialog & Show Success
+                                          if (context.mounted) {
+                                            Navigator.pop(context);
+                                            ScaffoldMessenger
+                                                .of(context)
+                                                .showSnackBar(const SnackBar(
+                                                content: Text(
+                                                    "Item successfully requested & published to the map!"),
+                                                backgroundColor: Colors.green
+                                            ));
+                                          }
+                                        } catch (e) {
+                                          setState(() {
+                                            isSaving = false;
+                                            errorMessage =
+                                            "Error publishing request: $e";
+                                          });
+                                        }
+                                      },
+                                      child: isSaving
+                                          ? const SizedBox(width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                              color: Colors.white,
+                                              strokeWidth: 2))
+                                          : const Row(
+                                        mainAxisAlignment: MainAxisAlignment
+                                            .center,
+                                        children: [
+                                          Text("Publish Item Request",
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 16)),
+                                          SizedBox(width: 8),
+                                          Icon(LucideIcons.arrowRight, size: 18)
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                )
-                              ],
+                                  )
+                                ],
+                              ),
                             ),
                           )
                         ],
@@ -3918,10 +3922,15 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
       );
     }
 
-    Widget _buildCustomTabBar() {
-      return Container(
-        decoration: const BoxDecoration(border: Border(
-            bottom: BorderSide(color: Color(0xFFE2E8F0), width: 1.5))),
+  Widget _buildCustomTabBar() {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(border: Border(
+          bottom: BorderSide(color: Color(0xFFE2E8F0), width: 1.5))),
+      // FIX: Added SingleChildScrollView so the tabs can be swiped horizontally
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
         child: Row(
           children: [
             _tabItem("Operational Areas", 0),
@@ -3929,52 +3938,52 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
             _tabItem("Physical Goods Requests", 1),
           ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
     // --- INVENTORY NEEDED CARD (Dynamic from relief_cache) ---
-    Widget _buildInventoryNeededCard() {
-      return Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.02),
-                blurRadius: 10,
-                offset: const Offset(0, 4))
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header with Button
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text("Inventory Needed", style: GoogleFonts.inter(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: kSlate800)),
-                  TextButton.icon(
-                    onPressed: () => _showRequestPhysicalGoodsDialog(),
-                    icon: const Icon(LucideIcons.plus, size: 14),
-                    label: const Text("Request New Item", style: TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 12)),
-                    style: TextButton.styleFrom(
-                      foregroundColor: kBlue,
-                      backgroundColor: kBlue.withOpacity(0.05),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
-                    ),
-                  )
-                ],
-              ),
+  Widget _buildInventoryNeededCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // FIX: Changed Row to Wrap so the button drops to the next line if the screen is too small
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                Text("Inventory Needed", style: GoogleFonts.inter(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: kSlate800)),
+                TextButton.icon(
+                  onPressed: () => _showRequestPhysicalGoodsDialog(),
+                  icon: const Icon(LucideIcons.plus, size: 14),
+                  label: const Text("Request New Item", style: TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: kBlue,
+                    backgroundColor: kBlue.withOpacity(0.05),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                )
+              ],
             ),
-            const Divider(height: 1, color: Color(0xFFE2E8F0)),
-
+          ),
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
             // --- DYNAMIC AI SUMMARIZATION FROM RELIEF CACHE ---
             StreamBuilder<DocumentSnapshot>(
               stream: FirebaseFirestore.instance.collection('relief_cache').doc(
@@ -4491,140 +4500,178 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
       );
     }
 
-    Future<void> _verifyReceiptId(String receiptId) async {
-      // 1. Show a loading spinner
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) =>
-        const Center(
-            child: CircularProgressIndicator(color: Color(0xFF2563EB))),
-      );
+  // ==========================================
+  // STRICT RULE: MANUAL ID ENTRY VERIFICATION
+  // ==========================================
+  Future<void> _verifyReceiptId(String receiptId) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB))),
+    );
 
-      try {
-        // 2. FIX: Use collectionGroup because donations are inside 'users/{uid}/donations/'
-        var querySnapshot = await FirebaseFirestore.instance
-            .collectionGroup('donations')
-            .where('id', isEqualTo: receiptId)
-            .limit(1)
-            .get();
+    try {
+      var querySnapshot = await FirebaseFirestore.instance.collectionGroup('donations').where('id', isEqualTo: receiptId).limit(1).get();
 
-        // 3. SMART FALLBACK: If they didn't find the ID, check if they typed the QR Code string instead
-        if (querySnapshot.docs.isEmpty) {
-          querySnapshot = await FirebaseFirestore.instance
-              .collectionGroup('donations')
-              .where('qrCodeData', isEqualTo: receiptId)
-              .limit(1)
-              .get();
-        }
-
-        // If STILL empty, it truly doesn't exist
-        if (querySnapshot.docs.isEmpty) {
-          Navigator.pop(context); // Close loading spinner
-          _showErrorSnackBar(
-              "Receipt ID not found in the system. Make sure you typed it exactly as shown.");
-          return;
-        }
-
-        // Extract the document reference and data
-        final docReference = querySnapshot.docs.first;
-        final data = docReference.data();
-
-        // ==========================================
-        // RULE 1: MUST NOT BE MONEY
-        // ==========================================
-        if (data['type'] == 'money') {
-          Navigator.pop(context);
-          _showErrorSnackBar(
-              "Cannot verify money donations. Only physical items.");
-          return;
-        }
-
-        // ==========================================
-        // RULE 2: CHECK MILESTONES BASED ON DELIVERY METHOD
-        // ==========================================
-        bool hasArrivedAtHubMilestone = false;
-        bool isArrivedAtHubDone = false;
-
-        // NEW: Track "Picked Up" status for Couriers
-        bool isPickedUpDone = false;
-
-        bool isPledgeConfirmedDone = false;
-        bool isAlreadyDistributed = false;
-
-        // Make a modifiable copy of the milestones
-        // ==========================================
-        // NEW 2-STEP RULE CHECKER
-        // ==========================================
-        bool isReceived = false;
-        bool isDistributed = false;
-        List<dynamic> milestones = List.from(data['milestones'] ?? []);
-
-        for (var m in milestones) {
-          if (m['label'] == 'Picked Up & In Transit' && m['done'] == true)
-            isPickedUpDone = true;
-          if (m['label'] == 'Arrived at NGO Hub') {
-            hasArrivedAtHubMilestone = true;
-            if (m['done'] == true) isArrivedAtHubDone = true;
-          }
-          if (m['label'] == 'Pledge Confirmed' && m['done'] == true)
-            isPledgeConfirmedDone = true;
-
-          if (m['label'] == 'Drop-off Verified' && m['done'] == true)
-            isReceived = true;
-          if (m['label'] == 'Distributed' && m['done'] == true)
-            isDistributed = true;
-        }
-
-        if (isDistributed) {
-          Navigator.pop(context);
-          _showErrorSnackBar(
-              "Action Denied: This donation has already been verified and distributed.");
-          return;
-        }
-
-        bool isReadyForVerification = false;
-        String errorMessage = "";
-
-        // IF NOT RECEIVED YET, CHECK IF IT'S READY TO BE RECEIVED
-        if (!isReceived) {
-          if (hasArrivedAtHubMilestone) { // Courier
-            if (isPickedUpDone && isArrivedAtHubDone) {
-              isReadyForVerification = true;
-            } else {
-              if (!isPickedUpDone)
-                errorMessage =
-                "Verification failed: Courier hasn't picked this up.";
-              else if (!isArrivedAtHubDone) errorMessage =
-              "Verification failed: Courier hasn't dropped this at the Hub.";
-            }
-          } else { // Self Drop-off
-            if (isPledgeConfirmedDone)
-              isReadyForVerification = true;
-            else
-              errorMessage = "Verification failed: Pledge not confirmed.";
-          }
-
-          if (!isReadyForVerification) {
-            Navigator.pop(context);
-            _showErrorSnackBar(errorMessage);
-            return;
-          }
-
-          Navigator.pop(context); // Close spinner
-          _showNGOActionDialog(
-              docReference.reference, data, milestones, 'receive');
-        } else {
-          // ALREADY RECEIVED. PROCEED TO DISTRIBUTE.
-          Navigator.pop(context); // Close spinner
-          _showNGOActionDialog(
-              docReference.reference, data, milestones, 'distribute');
-        }
-      } catch (e) {
-        Navigator.pop(context);
-        _showErrorSnackBar("Error: ${e.toString()}");
+      if (querySnapshot.docs.isEmpty) {
+        querySnapshot = await FirebaseFirestore.instance.collectionGroup('donations').where('qrCodeData', isEqualTo: receiptId).limit(1).get();
       }
+
+      if (querySnapshot.docs.isEmpty) {
+        Navigator.pop(context);
+        _showErrorSnackBar("Receipt ID not found in the system.");
+        return;
+      }
+
+      final docReference = querySnapshot.docs.first;
+      final data = docReference.data();
+
+      if (data['type'] == 'money') {
+        Navigator.pop(context);
+        _showErrorSnackBar("Cannot verify money donations. Only physical items.");
+        return;
+      }
+
+      bool hasArrivedAtHubMilestone = false;
+      bool isArrivedAtHubDone = false;
+      bool isPickedUpDone = false;
+      bool isPledgeConfirmedDone = false;
+      bool isReceived = false;
+      bool isDistributed = false;
+
+      List<dynamic> milestones = List.from(data['milestones'] ?? []);
+
+      for (var m in milestones) {
+        if (m['label'] == 'Picked Up & In Transit' && m['done'] == true) isPickedUpDone = true;
+        if (m['label'] == 'Arrived at NGO Hub') {
+          hasArrivedAtHubMilestone = true;
+          if (m['done'] == true) isArrivedAtHubDone = true;
+        }
+        if (m['label'] == 'Pledge Confirmed' && m['done'] == true) isPledgeConfirmedDone = true;
+        if (m['label'] == 'Drop-off Verified' && m['done'] == true) isReceived = true;
+        if (m['label'] == 'Distributed' && m['done'] == true) isDistributed = true;
+      }
+
+      if (isDistributed) {
+        Navigator.pop(context);
+        _showErrorSnackBar("Action Denied: This donation has already been verified and distributed.");
+        return;
+      }
+
+      bool isReadyForVerification = false;
+      String errorMessage = "";
+
+      if (!isReceived) {
+        // ---> THE STRICT COURIER RULE <---
+        if (hasArrivedAtHubMilestone) {
+          if (isPickedUpDone && isArrivedAtHubDone) {
+            isReadyForVerification = true;
+          } else {
+            if (!isPickedUpDone) errorMessage = "Verification failed: Courier hasn't picked this up.";
+            else if (!isArrivedAtHubDone) errorMessage = "Verification failed: Courier hasn't dropped this at the Hub.";
+          }
+        } else { // Self Drop-off
+          if (isPledgeConfirmedDone) isReadyForVerification = true;
+          else errorMessage = "Verification failed: Pledge not confirmed.";
+        }
+
+        if (!isReadyForVerification) {
+          Navigator.pop(context);
+          _showErrorSnackBar(errorMessage);
+          return;
+        }
+
+        Navigator.pop(context);
+        _showNGOActionDialog(docReference.reference, data, milestones, 'receive');
+      } else {
+        Navigator.pop(context);
+        _showNGOActionDialog(docReference.reference, data, milestones, 'distribute');
+      }
+    } catch (e) {
+      Navigator.pop(context);
+      _showErrorSnackBar("Error: ${e.toString()}");
     }
+  }
+
+  // ==========================================
+  // STRICT RULE: QR SCANNER VERIFICATION
+  // ==========================================
+  Future<void> _processNGOQrScan(String qrData) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB))),
+    );
+
+    try {
+      var query = await FirebaseFirestore.instance.collectionGroup('donations').where('qrCodeData', isEqualTo: qrData).get();
+
+      if (query.docs.isEmpty) {
+        if (mounted) Navigator.pop(context);
+        _showErrorSnackBar("Invalid QR Code. Donation package not found.");
+        return;
+      }
+
+      var doc = query.docs.first;
+      var data = doc.data();
+      List<dynamic> milestones = List.from(data['milestones'] ?? []);
+
+      bool hasArrivedAtHubMilestone = false;
+      bool isArrivedAtHubDone = false;
+      bool isPickedUpDone = false;
+      bool isPledgeConfirmedDone = false;
+      bool isReceived = false;
+      bool isDistributed = false;
+
+      for (var m in milestones) {
+        if (m['label'] == 'Picked Up & In Transit' && m['done'] == true) isPickedUpDone = true;
+        if (m['label'] == 'Arrived at NGO Hub') {
+          hasArrivedAtHubMilestone = true;
+          if (m['done'] == true) isArrivedAtHubDone = true;
+        }
+        if (m['label'] == 'Pledge Confirmed' && m['done'] == true) isPledgeConfirmedDone = true;
+        if (m['label'] == 'Drop-off Verified' && m['done'] == true) isReceived = true;
+        if (m['label'] == 'Distributed' && m['done'] == true) isDistributed = true;
+      }
+
+      if (mounted) Navigator.pop(context); // Close loading spinner
+
+      if (isDistributed) {
+        _showErrorSnackBar("Action Denied: This donation has already been distributed.");
+        return;
+      }
+
+      bool isReadyForVerification = false;
+      String errorMessage = "";
+
+      if (!isReceived) {
+        // ---> THE STRICT COURIER RULE <---
+        if (hasArrivedAtHubMilestone) {
+          if (isPickedUpDone && isArrivedAtHubDone) {
+            isReadyForVerification = true;
+          } else {
+            if (!isPickedUpDone) errorMessage = "Scan failed: Courier hasn't picked this up yet.";
+            else if (!isArrivedAtHubDone) errorMessage = "Scan failed: Courier hasn't dropped this at the Hub yet.";
+          }
+        } else { // Self Drop-off
+          if (isPledgeConfirmedDone) isReadyForVerification = true;
+          else errorMessage = "Scan failed: Pledge not confirmed.";
+        }
+
+        if (!isReadyForVerification) {
+          _showErrorSnackBar(errorMessage);
+          return;
+        }
+
+        _showNGOActionDialog(doc.reference, data, milestones, 'receive');
+      } else {
+        _showNGOActionDialog(doc.reference, data, milestones, 'distribute');
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      _showErrorSnackBar("Error processing QR: $e");
+    }
+  }
 
     // Helper function to show errors nicely
     void _showErrorSnackBar(String message) {
@@ -5118,78 +5165,6 @@ class _NGOOperationalDashboardState extends State<NGOOperationalDashboard> {
 
       if (scannedCode != null && scannedCode is String) {
         _processNGOQrScan(scannedCode);
-      }
-    }
-
-    Future<void> _processNGOQrScan(String qrData) async {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) =>
-        const Center(
-            child: CircularProgressIndicator(color: Color(0xFF2563EB))),
-      );
-
-      try {
-        var query = await FirebaseFirestore.instance
-            .collectionGroup('donations')
-            .where('qrCodeData', isEqualTo: qrData)
-            .get();
-
-        if (query.docs.isEmpty) {
-          if (mounted) Navigator.pop(context);
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text(
-                    "Invalid QR Code. Donation package not found."),
-                    backgroundColor: Colors.redAccent)
-            );
-          }
-          return;
-        }
-
-        var doc = query.docs.first;
-        var data = doc.data();
-        List<dynamic> milestones = List.from(data['milestones'] ?? []);
-
-        // --- NEW LOGIC: DETERMINE CURRENT STAGE ---
-        bool isReceived = false;
-        bool isDistributed = false;
-
-        for (var m in milestones) {
-          if (m['label'] == 'Drop-off Verified' && m['done'] == true)
-            isReceived = true;
-          if (m['label'] == 'Distributed' && m['done'] == true)
-            isDistributed = true;
-        }
-
-        if (mounted) Navigator.pop(context); // Close loading
-
-        if (isDistributed) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text(
-                    "Action Denied: This donation has already been distributed."),
-                    backgroundColor: Colors.orange)
-            );
-          }
-          return;
-        }
-
-        // If not received yet, open RECIEVE dialog. If received, open DISTRIBUTE dialog.
-        if (!isReceived) {
-          _showNGOActionDialog(doc.reference, data, milestones, 'receive');
-        } else {
-          _showNGOActionDialog(doc.reference, data, milestones, 'distribute');
-        }
-      } catch (e) {
-        if (mounted) Navigator.pop(context);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Error processing QR: $e"),
-                  backgroundColor: Colors.redAccent)
-          );
-        }
       }
     }
 
