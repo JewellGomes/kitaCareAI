@@ -8275,6 +8275,10 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
     );
   }
 
+  // ==========================================
+  // IN-CHAT VERIFICATION LOGIC (STRICT LOGISTICS)
+  // ==========================================
+
   Future<void> _verifyReceiptId(String receiptId) async {
     showDialog(
       context: context,
@@ -8304,21 +8308,20 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
         return;
       }
 
-      bool hasArrivedAtHubMilestone = false;
-      bool isArrivedAtHubDone = false;
-      bool isPickedUpDone = false;
-      bool isPledgeConfirmedDone = false;
+      // --- NEW: Identify Delivery Method ---
+      bool isCourier = data['deliveryMethod'] == 'driver';
 
+      bool isPickedUpDone = false;
+      bool isArrivedAtHubDone = false;
+      bool isPledgeConfirmedDone = false;
       bool isReceived = false;
       bool isDistributed = false;
+
       List<dynamic> milestones = List.from(data['milestones'] ?? []);
 
       for (var m in milestones) {
         if (m['label'] == 'Picked Up & In Transit' && m['done'] == true) isPickedUpDone = true;
-        if (m['label'] == 'Arrived at NGO Hub') {
-          hasArrivedAtHubMilestone = true;
-          if (m['done'] == true) isArrivedAtHubDone = true;
-        }
+        if (m['label'] == 'Arrived at NGO Hub' && m['done'] == true) isArrivedAtHubDone = true;
         if (m['label'] == 'Pledge Confirmed' && m['done'] == true) isPledgeConfirmedDone = true;
         if (m['label'] == 'Drop-off Verified' && m['done'] == true) isReceived = true;
         if (m['label'] == 'Distributed' && m['done'] == true) isDistributed = true;
@@ -8330,25 +8333,25 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
         return;
       }
 
-      bool isReadyForVerification = false;
-      String errorMessage = "";
-
       if (!isReceived) {
-        if (hasArrivedAtHubMilestone) {
-          if (isPickedUpDone && isArrivedAtHubDone) isReadyForVerification = true;
-          else {
-            if (!isPickedUpDone) errorMessage = "Verification failed: Courier hasn't picked this up.";
-            else if (!isArrivedAtHubDone) errorMessage = "Verification failed: Courier hasn't dropped this at the Hub.";
+        // --- STRICT LOGISTICS GUARD ---
+        if (isCourier) {
+          if (!isPickedUpDone) {
+            Navigator.pop(context);
+            _showErrorSnackBar("Verification failed: Courier hasn't picked this up yet.");
+            return;
+          } else if (!isArrivedAtHubDone) {
+            Navigator.pop(context);
+            _showErrorSnackBar("Verification failed: Courier hasn't dropped this at the Hub yet.");
+            return;
           }
         } else {
-          if (isPledgeConfirmedDone) isReadyForVerification = true;
-          else errorMessage = "Verification failed: Pledge not confirmed.";
-        }
-
-        if (!isReadyForVerification) {
-          Navigator.pop(context);
-          _showErrorSnackBar(errorMessage);
-          return;
+          // Self Drop-off
+          if (!isPledgeConfirmedDone) {
+            Navigator.pop(context);
+            _showErrorSnackBar("Verification failed: Pledge not confirmed.");
+            return;
+          }
         }
 
         Navigator.pop(context);
@@ -8383,10 +8386,19 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
       var data = doc.data();
       List<dynamic> milestones = List.from(data['milestones'] ?? []);
 
+      // --- NEW: Identify Delivery Method ---
+      bool isCourier = data['deliveryMethod'] == 'driver';
+
+      bool isPickedUpDone = false;
+      bool isArrivedAtHubDone = false;
+      bool isPledgeConfirmedDone = false;
       bool isReceived = false;
       bool isDistributed = false;
 
       for (var m in milestones) {
+        if (m['label'] == 'Picked Up & In Transit' && m['done'] == true) isPickedUpDone = true;
+        if (m['label'] == 'Arrived at NGO Hub' && m['done'] == true) isArrivedAtHubDone = true;
+        if (m['label'] == 'Pledge Confirmed' && m['done'] == true) isPledgeConfirmedDone = true;
         if (m['label'] == 'Drop-off Verified' && m['done'] == true) isReceived = true;
         if (m['label'] == 'Distributed' && m['done'] == true) isDistributed = true;
       }
@@ -8399,6 +8411,23 @@ class _AiAdvisorPageState extends State<AiAdvisorPage> {
       }
 
       if (!isReceived) {
+        // --- STRICT LOGISTICS GUARD ---
+        if (isCourier) {
+          if (!isPickedUpDone) {
+            _showErrorSnackBar("Scan failed: Courier hasn't picked this up yet.");
+            return;
+          } else if (!isArrivedAtHubDone) {
+            _showErrorSnackBar("Scan failed: Courier hasn't dropped this at the Hub yet.");
+            return;
+          }
+        } else {
+          // Self Drop-off
+          if (!isPledgeConfirmedDone) {
+            _showErrorSnackBar("Scan failed: Pledge not confirmed.");
+            return;
+          }
+        }
+
         _showNGOActionDialog(doc.reference, data, milestones, 'receive');
       } else {
         _showNGOActionDialog(doc.reference, data, milestones, 'distribute');
